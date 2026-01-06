@@ -1,0 +1,217 @@
+//! `DPoP` signing implementation.
+
+use std::{collections::HashMap, convert::Infallible, sync::Arc, time::Duration};
+
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use bon::Builder;
+use http::{Method, Uri, uri::Scheme};
+use parking_lot::{Mutex, RwLock};
+use secrecy::ExposeSecret as _;
+use serde::Serialize;
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+    AccessToken,
+    jwt::{JwsSerializationError, Jwt},
+    platform::{MaybeSend, MaybeSendSync},
+    signer::{HasPublicKey, JwsSigner},
+};
+
+/// Proof implementation for `DPoP`.
+pub trait AuthorizationServerDPoP: Clone + MaybeSendSync {
+    /// The error type when signing proofs.
+    type Error: crate::Error + 'static;
+    /// The type of the corresponding resource server variant.
+    type ResourceServerDPoP: ResourceServerDPoP;
+
+    /// Set the current `DPoP` nonce value.
+    fn update_nonce(&self, nonce: String);
+
+    /// Create a `DPoP` proof for the token endpoint.
+    fn proof(
+        &self,
+        method: &Method,
+        uri: &Uri,
+    ) -> impl Future<Output = Result<Option<String>, Self::Error>> + MaybeSend;
+
+    fn to_resource_server_dpop(&self) -> Self::ResourceServerDPoP;
+}
+
+pub trait ResourceServerDPoP: Clone + MaybeSendSync {
+    /// The error type when signing proofs;
+    type Error: crate::Error + 'static;
+
+    /// Set the current `DPoP` nonce value.
+    fn update_nonce(&self, uri: &Uri, nonce: String);
+
+    /// Create a `DPoP` proof with access token binding.
+    fn proof(
+        &self,
+        method: &Method,
+        uri: &Uri,
+        access_token: &AccessToken,
+    ) -> impl Future<Output = Result<Option<String>, Self::Error>> + MaybeSend;
+}
+
+/// This represents a grant without the ability to use `DPoP` to constrain tokens.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDPoP;
+
+impl AuthorizationServerDPoP for NoDPoP {
+    type Error = Infallible;
+    type ResourceServerDPoP = NoDPoP;
+
+    fn update_nonce(&self, _nonce: String) {}
+
+    async fn proof(&self, _method: &Method, _uri: &Uri) -> Result<Option<String>, Self::Error> {
+        Ok(None)
+    }
+
+    fn to_resource_server_dpop(&self) -> Self::ResourceServerDPoP {
+        NoDPoP
+    }
+}
+
+impl ResourceServerDPoP for NoDPoP {
+    type Error = Infallible;
+
+    fn update_nonce(&self, _uri: &Uri, _nonce: String) {}
+
+    async fn proof(
+        &self,
+        _method: &Method,
+        _uri: &Uri,
+        _access_token: &AccessToken,
+    ) -> Result<Option<String>, Self::Error> {
+        Ok(None)
+    }
+}
+
+// Used internally to track the origin value for a Uri (nonces are matched by origin).
+type Origin = (Option<Scheme>, Option<String>, Option<u16>);
+
+/// This respresents a grant with the ability to create DPoP-bound tokens and sign requests with them.
+#[derive(Debug, Clone, Builder)]
+pub struct DPoP<Sgn: JwsSigner + HasPublicKey> {
+    signer: Sgn,
+    #[builder(skip)]
+    nonce: Arc<Mutex<Option<Arc<String>>>>,
+}
+
+impl<Sgn: JwsSigner + HasPublicKey> AuthorizationServerDPoP for DPoP<Sgn> {
+    type Error = JwsSerializationError<<Sgn as JwsSigner>::Error>;
+    type ResourceServerDPoP = ResourceDPoP<Sgn>;
+
+    fn update_nonce(&self, nonce: String) {
+        let _ = self.nonce.lock().insert(Arc::new(nonce));
+    }
+
+    async fn proof(&self, method: &Method, uri: &Uri) -> Result<Option<String>, Self::Error> {
+        let nonce = self.nonce.lock().clone();
+        sign_proof(&self.signer, method, uri, None, nonce).await
+    }
+
+    fn to_resource_server_dpop(&self) -> Self::ResourceServerDPoP {
+        ResourceDPoP::builder().signer(self.signer.clone()).build()
+    }
+}
+
+/// This respresents the ability to create proofs for resource servers from DPoP-bound access tokens.
+#[derive(Debug, Clone, Builder)]
+pub struct ResourceDPoP<Sgn: JwsSigner + HasPublicKey> {
+    signer: Sgn,
+    #[builder(default)]
+    nonces: Arc<RwLock<HashMap<Origin, Arc<String>>>>,
+}
+
+impl<Sgn: JwsSigner + HasPublicKey> ResourceServerDPoP for ResourceDPoP<Sgn> {
+    type Error = JwsSerializationError<<Sgn as JwsSigner>::Error>;
+
+    fn update_nonce(&self, uri: &Uri, nonce: String) {
+        let origin = origin_from_uri(uri);
+        self.nonces.write().insert(origin, Arc::new(nonce));
+    }
+
+    async fn proof(
+        &self,
+        method: &Method,
+        uri: &Uri,
+        access_token: &AccessToken,
+    ) -> Result<Option<String>, Self::Error> {
+        let origin = origin_from_uri(uri);
+        let nonce = self.nonces.read().get(&origin).cloned();
+        sign_proof(&self.signer, method, uri, Some(access_token), nonce).await
+    }
+}
+
+fn origin_from_uri(uri: &Uri) -> Origin {
+    (
+        uri.scheme().cloned(),
+        uri.host().map(str::to_string),
+        uri.port_u16(),
+    )
+}
+
+async fn sign_proof<Sgn: JwsSigner + HasPublicKey>(
+    signer: &Sgn,
+    htm: &Method,
+    htu: &Uri,
+    access_token: Option<&AccessToken>,
+    nonce: Option<Arc<String>>,
+) -> Result<Option<String>, JwsSerializationError<<Sgn as JwsSigner>::Error>> {
+    #[derive(Debug, Clone, Serialize)]
+    struct DPoPHeaders {
+        jwk: serde_json::Value,
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    struct DPoPClaims<'a> {
+        htm: &'a str,
+        htu: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ath: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        nonce: Option<Arc<String>>,
+    }
+
+    let extra_headers = DPoPHeaders {
+        jwk: serde_json::to_value(signer.public_key_jwk())
+            .expect("PublicJwk serialization cannot fail"),
+    };
+
+    let extra_claims = DPoPClaims {
+        htm: htm.as_str(),
+        htu: normalize_uri_for_dpop(htu).unwrap().to_string(),
+        ath: access_token.map(hash_access_token_for_dpop),
+        nonce,
+    };
+
+    let jwt = Jwt::builder()
+        .typ("dpop+jwt")
+        .issued_now_expires_after(Duration::from_secs(60))
+        .extra_headers(extra_headers)
+        .extra_claims(extra_claims)
+        .build();
+
+    jwt.to_jws_compact(signer).await.map(Some)
+}
+
+fn normalize_uri_for_dpop(uri: &Uri) -> Result<Uri, http::Error> {
+    let mut builder = http::uri::Builder::new();
+
+    if let Some(scheme) = uri.scheme() {
+        builder = builder.scheme(scheme.clone());
+    }
+    if let Some(authority) = uri.authority() {
+        builder = builder.authority(authority.clone());
+    }
+    builder = builder.path_and_query(uri.path());
+    builder.build()
+}
+
+fn hash_access_token_for_dpop(access_token: &AccessToken) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(access_token.expose_secret().as_bytes());
+    let hash_digest = hasher.finalize();
+    URL_SAFE_NO_PAD.encode(hash_digest)
+}

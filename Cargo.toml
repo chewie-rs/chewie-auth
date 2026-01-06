@@ -1,0 +1,55 @@
+[package]
+name = "chewie-auth"
+version = "0.1.0"
+edition = "2024"
+description = "Type-safe OAuth 2.0 client library with compile-time guarantees and extensible architecture"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fiadliel/chewie-auth"
+documentation = "https://docs.rs/chewie-auth"
+homepage = "https://github.com/fiadliel/chewie-auth"
+keywords = ["oauth2", "authentication", "auth", "oauth", "dpop"]
+categories = ["authentication", "web-programming"]
+readme = "README.md"
+rust-version = "1.88"
+
+[features]
+default = ["crypto-native"]
+crypto-native = ["dep:p256", "dep:p384", "dep:p521"]
+http-client-reqwest-0_13 = ["dep:reqwest"]
+
+[dependencies]
+base64 = "0.22"
+bon = { version = "3.8", features = ["implied-bounds"] }
+bytes = { version = "1", default-features = false }
+hex = "0.4"
+http = "1"
+p256 = { version = "0.14.0-rc.6", optional = true, default-features = false, features = ["ecdsa", "pem", "std"] }
+p384 = { version = "0.14.0-rc.6", optional = true, default-features = false, features = ["ecdsa", "pem", "std" ] }
+p521 = { version = "0.14.0-rc.6", optional = true, default-features = false, features = ["ecdsa", "pem", "std", "getrandom"] }
+parking_lot = "0.12"
+rand = "0.9"
+reqwest = { version = "0.13", default-features = false, optional = true }
+secrecy = { version = "0.10", features = ["serde"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_html_form = { version = "0.3", default-features = false, features = ["std"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_qs = "0.15"
+sha2 = { version = "0.10" }
+snafu = { version = "0.8", features = ["rust_1_81"] }
+subtle = "2"
+tokio = { version = "1", default-features = false, features = ["rt", "sync", "time"] }
+url = { version = "2", features = ["serde"] }
+uuid = { version = "1.13", features = ["v7"] }
+
+[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
+web-time = { version = "1", features = ["serde"] }
+js-sys = "0.3"
+gloo-timers = { version = "0.3", features = ["futures"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4.0-rc.1", features = ["wasm_js"] }
+uuid = { version = "1", features = ["js"] }
+
+[dev-dependencies]
+chewie-auth = { path = ".", features = ["http-client-reqwest-0_13"] }
+reqwest = "0.13"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

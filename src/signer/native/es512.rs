@@ -1,0 +1,108 @@
+use bytes::Bytes;
+use p521::ecdsa::{Signature, SigningKey, VerifyingKey, signature::Signer};
+use p521::elliptic_curve::Generate as _;
+use p521::pkcs8::DecodePrivateKey as _;
+use secrecy::{ExposeSecret as _, SecretBox, SecretString};
+use snafu::prelude::*;
+use std::borrow::Cow;
+use std::convert::Infallible;
+use std::sync::Arc;
+
+use crate::jwk;
+use crate::secrets::Secret;
+use crate::signer::{HasPublicKey, JwsSigner, KeyMetadata};
+
+const ALGORITHM: &str = "ES512";
+
+#[derive(Debug, Snafu)]
+pub enum Es512PrivateKeyLoadError<E: crate::Error> {
+    Secret {
+        source: E,
+    },
+    #[snafu(display("Failed to decode PKCS#8 key"))]
+    KeyDecode {
+        source: p521::pkcs8::Error,
+    },
+    /// Signature error.
+    Signature {
+        /// The underlying error.
+        source: p521::ecdsa::Error,
+    },
+}
+
+#[derive(Clone)]
+pub struct Es512PrivateKey {
+    pub(super) inner: Arc<SigningKey>,
+    key_metadata: KeyMetadata,
+    jwk: jwk::PublicJwk,
+}
+
+impl From<SigningKey> for Es512PrivateKey {
+    fn from(value: SigningKey) -> Self {
+        let verifying_key = VerifyingKey::from(&value);
+        let encoded_point = verifying_key.to_encoded_point(false);
+        let key = jwk::EcPublicKey::builder()
+            .crv("P-521")
+            .x(encoded_point
+                .x()
+                .expect("uncompressed point always has x coordinate")
+                .to_vec())
+            .y(encoded_point
+                .y()
+                .expect("uncompressed point always has y coordinate")
+                .to_vec())
+            .build();
+
+        Self {
+            inner: Arc::new(value),
+            key_metadata: KeyMetadata::builder().jws_algorithm(ALGORITHM).build(),
+            jwk: jwk::PublicJwk::builder()
+                .algorithm(ALGORITHM)
+                .key_use(jwk::KeyUse::Sign)
+                .key(key)
+                .build(),
+        }
+    }
+}
+
+impl Es512PrivateKey {
+    #[must_use]
+    pub fn generate() -> Self {
+        p521::ecdsa::SigningKey::generate().into()
+    }
+
+    pub async fn load_pkcs8_der<S: Secret<Output = SecretBox<[u8]>>>(
+        secret: S,
+    ) -> Result<Self, Es512PrivateKeyLoadError<S::Error>> {
+        let der = secret.get_secret_value().await.context(SecretSnafu)?;
+        let key = SigningKey::from_pkcs8_der(der.expose_secret()).context(KeyDecodeSnafu)?;
+        Ok(key.into())
+    }
+
+    pub async fn load_pkcs8_pem<S: Secret<Output = SecretString>>(
+        secret: S,
+    ) -> Result<Self, Es512PrivateKeyLoadError<S::Error>> {
+        let pem = secret.get_secret_value().await.context(SecretSnafu)?;
+        let key = SigningKey::from_pkcs8_pem(pem.expose_secret()).context(KeyDecodeSnafu)?;
+        Ok(key.into())
+    }
+}
+
+impl JwsSigner for Es512PrivateKey {
+    type Error = Infallible;
+
+    fn key_metadata(&self) -> Cow<'_, KeyMetadata> {
+        Cow::Borrowed(&self.key_metadata)
+    }
+
+    async fn sign_unchecked(&self, input: &[u8]) -> Result<Bytes, Self::Error> {
+        let signature: Signature = self.inner.as_ref().sign(input);
+        Ok(signature.to_vec().into())
+    }
+}
+
+impl HasPublicKey for Es512PrivateKey {
+    fn public_key_jwk(&self) -> &jwk::PublicJwk {
+        &self.jwk
+    }
+}

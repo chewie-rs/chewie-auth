@@ -110,6 +110,7 @@ async fn example(http_client: &reqwest::Client, oidc_provider_metadata: &OidcPro
 - RFC 7517 - JSON Web Key (JWK)
 - RFC 7518 - JSON Web Algorithms (JWA)
 - RFC 7519 - JSON Web Token (JWT)
+- RFC 7638 - JSON Web Key (JWK) Thumbprint
 - RFC 8037 - CFRG Elliptic Curve Signatures in JOSE (OKP/Ed25519)
 
 ### `OpenID` Connect

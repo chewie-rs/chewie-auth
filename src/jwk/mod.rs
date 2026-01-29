@@ -8,8 +8,10 @@
 mod serde_utils;
 
 use crate::jwk::serde_utils::{base64url, base64url_uint};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use bon::Builder;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 
 /// A JSON Web Key Set (RFC 7517 §5).
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -45,6 +47,24 @@ pub struct PublicJwk {
     #[builder(into)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kid: Option<String>,
+}
+
+impl PublicJwk {
+    pub fn thumbprint(&self) -> Option<String> {
+        let canonical_form = match &self.key {
+            PublicKey::Rsa(rsa_public_key) => Some(rsa_public_key.canonical_form()),
+            PublicKey::Ec(ec_public_key) => Some(ec_public_key.canonical_form()),
+            PublicKey::Okp(okp_public_key) => Some(okp_public_key.canonical_form()),
+            PublicKey::UnknownOrPrivate => None,
+        };
+
+        canonical_form.map(|canonical| {
+            let mut hasher = Sha256::new();
+            hasher.update(canonical.as_bytes());
+            let hash = hasher.finalize();
+            URL_SAFE_NO_PAD.encode(hash)
+        })
+    }
 }
 
 /// Key use parameter (RFC 7517 §4.2).
@@ -126,6 +146,15 @@ pub struct RsaPublicKey {
     pub e: Vec<u8>,
 }
 
+impl RsaPublicKey {
+    pub fn canonical_form(&self) -> String {
+        let e = URL_SAFE_NO_PAD.encode(&self.e);
+        let n = URL_SAFE_NO_PAD.encode(&self.n);
+
+        format!(r#"{{"e":"{e}","kty":"RSA","n":"{n}"}}"#)
+    }
+}
+
 impl From<RsaPublicKey> for PublicKey {
     fn from(value: RsaPublicKey) -> Self {
         Self::Rsa(value)
@@ -165,6 +194,16 @@ pub struct EcPublicKey {
     pub y: Vec<u8>,
 }
 
+impl EcPublicKey {
+    pub fn canonical_form(&self) -> String {
+        let crv = &self.crv;
+        let x = URL_SAFE_NO_PAD.encode(&self.x);
+        let y = URL_SAFE_NO_PAD.encode(&self.y);
+
+        format!(r#"{{"crv":"{crv}","kty":"EC","x":"{x}","y":"{y}"}}"#)
+    }
+}
+
 impl From<EcPublicKey> for PublicKey {
     fn from(value: EcPublicKey) -> Self {
         Self::Ec(value)
@@ -197,6 +236,15 @@ pub struct OkpPublicKey {
     #[builder(with = <_>::from_iter)]
     #[serde(with = "base64url")]
     pub x: Vec<u8>,
+}
+
+impl OkpPublicKey {
+    pub fn canonical_form(&self) -> String {
+        let crv = &self.crv;
+        let x = URL_SAFE_NO_PAD.encode(&self.x);
+
+        format!(r#"{{"crv":"{crv}","kty":"OKP","x":"{x}"}}"#)
+    }
 }
 
 impl From<OkpPublicKey> for PublicKey {

@@ -24,6 +24,8 @@ pub trait AuthorizationServerDPoP: Clone + MaybeSendSync {
     /// The type of the corresponding resource server variant.
     type ResourceServerDPoP: ResourceServerDPoP;
 
+    fn jwk_thumbprint(&self) -> Option<&str>;
+
     /// Set the current `DPoP` nonce value.
     fn update_nonce(&self, nonce: String);
 
@@ -60,6 +62,10 @@ pub struct NoDPoP;
 impl AuthorizationServerDPoP for NoDPoP {
     type Error = Infallible;
     type ResourceServerDPoP = NoDPoP;
+
+    fn jwk_thumbprint(&self) -> Option<&str> {
+        None
+    }
 
     fn update_nonce(&self, _nonce: String) {}
 
@@ -98,6 +104,8 @@ type Origin = (Option<Scheme>, Option<String>, Option<u16>);
 #[derive(Debug, Clone, Builder)]
 pub struct DPoP<Sgn: JwsSigner + HasPublicKey> {
     signer: Sgn,
+    #[builder(skip = signer.public_key_jwk().thumbprint())]
+    jwk_thumbprint: Option<String>,
     #[builder(skip)]
     nonce: Arc<Mutex<Option<Arc<String>>>>,
 }
@@ -105,6 +113,10 @@ pub struct DPoP<Sgn: JwsSigner + HasPublicKey> {
 impl<Sgn: JwsSigner + HasPublicKey> AuthorizationServerDPoP for DPoP<Sgn> {
     type Error = JwsSerializationError<<Sgn as JwsSigner>::Error>;
     type ResourceServerDPoP = ResourceDPoP<Sgn>;
+
+    fn jwk_thumbprint(&self) -> Option<&str> {
+        self.jwk_thumbprint.as_deref()
+    }
 
     fn update_nonce(&self, nonce: String) {
         let _ = self.nonce.lock().insert(Arc::new(nonce));

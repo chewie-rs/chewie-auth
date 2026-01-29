@@ -286,10 +286,13 @@ pub struct CallbackState {
 struct AuthorizationPayload<'a> {
     response_type: &'static str,
     redirect_uri: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<&'a str>,
     state: &'a str,
     code_challenge: &'a str,
     code_challenge_method: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dpop_jkt: Option<&'a str>,
 }
 
 mod par {
@@ -357,7 +360,11 @@ mod par {
     }
 }
 
-fn build_authorization_payload<'a, Auth: ClientAuthentication, DPoP: AuthorizationServerDPoP>(
+fn build_authorization_payload<
+    'a,
+    Auth: ClientAuthentication + 'static,
+    DPoP: AuthorizationServerDPoP + 'static,
+>(
     flow: &'a Flow<Auth, DPoP>,
     start_input: &'a StartInput,
     pkce: &'a Pkce,
@@ -369,6 +376,7 @@ fn build_authorization_payload<'a, Auth: ClientAuthentication, DPoP: Authorizati
         state: &start_input.state,
         code_challenge: &pkce.challenge,
         code_challenge_method: "S256",
+        dpop_jkt: flow.grant.dpop().jwk_thumbprint(),
     }
 }
 

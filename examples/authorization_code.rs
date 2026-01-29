@@ -4,16 +4,19 @@ use chewie_auth::{
     oidc::discovery::OidcProviderMetadata,
     secrets::{EnvVarSecret, StringEncoding},
 };
+use snafu::prelude::*;
 
 #[tokio::main]
-pub async fn main() {
+pub async fn main() -> Result<(), snafu::Whatever> {
     let http_client = reqwest::Client::new();
-    let oidc_provider_metadata =
-        OidcProviderMetadata::from_issuer(std::env::var("ISSUER").unwrap().as_str())
-            .http_client(&http_client)
-            .call()
-            .await
-            .unwrap();
+    let oidc_provider_metadata = OidcProviderMetadata::from_issuer(
+        std::env::var("ISSUER")
+            .whatever_context("Failed to get ISSUER")?
+            .as_str(),
+    )
+    .call(&http_client)
+    .await
+    .unwrap();
 
     let grant = authorization_code::Grant::from_oidc_provider_metadata(&oidc_provider_metadata)
         .client_auth(
@@ -33,12 +36,15 @@ pub async fn main() {
     let start_input = StartInput::builder()
         .scopes(bon::vec!["test"])
         .build()
-        .unwrap();
+        .whatever_context("Failed to generate random ID")?;
 
     // Note: this is incorrect, just want to see the full flow. State should be read from the callback.
     let state_for_later = start_input.state.clone();
 
-    let callback_state = flow.start(&http_client, start_input).await.unwrap();
+    let callback_state = flow
+        .start(&http_client, start_input)
+        .await
+        .whatever_context("Failed to start flow")?;
 
     println!("Callback URL: {}", callback_state.authorization_url);
 
@@ -52,7 +58,9 @@ pub async fn main() {
                 .build(),
         )
         .await
-        .unwrap();
+        .whatever_context("Failed to complete flow")?;
 
     println!("Access Token: {:?}", token_response);
+
+    Ok(())
 }

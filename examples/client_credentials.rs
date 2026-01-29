@@ -1,39 +1,56 @@
 use chewie_auth::{
+    authorizer::OAuthAuthorizer,
+    cache::{InMemoryStore, OAuthTokenCache},
     client_auth::ClientSecret,
-    grant::{ExchangeGrant, client_credentials},
+    dpop::DPoP,
+    grant::client_credentials,
     oidc::discovery::OidcProviderMetadata,
     secrets::{EnvVarSecret, StringEncoding},
+    signer::native::Es256PrivateKey,
 };
+use snafu::prelude::*;
 
 #[tokio::main]
-pub async fn main() {
+pub async fn main() -> Result<(), snafu::Whatever> {
     let http_client = reqwest::Client::new();
-    let oidc_provider_metadata =
-        OidcProviderMetadata::from_issuer(std::env::var("ISSUER").unwrap().as_str())
-            .http_client(&http_client)
-            .call()
-            .await
-            .unwrap();
+    let oidc_provider_metadata = OidcProviderMetadata::from_issuer(
+        std::env::var("ISSUER")
+            .whatever_context("Failed to get ISSUER")?
+            .as_str(),
+    )
+    .call(&http_client)
+    .await
+    .whatever_context("Failed to get metadata")?;
 
     let grant = client_credentials::Grant::from_oidc_provider_metadata(&oidc_provider_metadata)
         .client_auth(
             ClientSecret::builder()
-                .client_id(std::env::var("CLIENT_ID").unwrap())
+                .client_id(std::env::var("CLIENT_ID").whatever_context("Failed to get CLIENT_ID")?)
                 .client_secret(EnvVarSecret::new("CLIENT_SECRET", StringEncoding))
                 .build(),
         )
-        .no_dpop()
+        .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())
         .build();
 
-    let token_response = grant
-        .exchange(
-            &http_client,
+    let cache = OAuthTokenCache::builder()
+        .grant(grant)
+        .grant_parameters(
             client_credentials::Parameters::builder()
                 .scopes(bon::vec!["test"])
                 .build(),
         )
-        .await
-        .unwrap();
+        .refresh_store(InMemoryStore::default())
+        .build();
 
-    println!("Access Token: {:?}", token_response);
+    let authorizer = OAuthAuthorizer::new(cache);
+
+    let uri = "https://blah/".parse().unwrap();
+    let headers = authorizer
+        .get_headers(&http_client, &http::Method::GET, &uri)
+        .await
+        .whatever_context("Failed to get headers")?;
+
+    println!("Headers: {:?}", headers);
+
+    Ok(())
 }

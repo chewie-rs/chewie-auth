@@ -35,6 +35,20 @@ pub enum AuthorizerError<TcErr: crate::Error + 'static, DPoPErr: crate::Error + 
     },
 }
 
+impl<TcErr: crate::Error + 'static, DPoPErr: crate::Error + 'static> crate::Error
+    for AuthorizerError<TcErr, DPoPErr>
+{
+    fn is_retryable(&self) -> bool {
+        match self {
+            AuthorizerError::TokenCache { source } => source.is_retryable(),
+            AuthorizerError::DPoP { source } => source.is_retryable(),
+            AuthorizerError::InvalidHeaderValue => false,
+            AuthorizerError::UnexpectedDPoPToken => false,
+            AuthorizerError::InvalidHeader { .. } => false,
+        }
+    }
+}
+
 impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> OAuthAuthorizer<G, S> {
     pub fn new(cache: OAuthTokenCache<G, S>) -> Self {
         let dpop = cache.grant.dpop().to_resource_server_dpop();

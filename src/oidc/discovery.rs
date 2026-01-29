@@ -2,7 +2,7 @@
 
 use bon::bon;
 use bytes::Bytes;
-use http::Uri;
+use http::{StatusCode, Uri};
 use serde::Deserialize;
 use snafu::prelude::*;
 use url::Url;
@@ -111,7 +111,7 @@ impl OidcProviderMetadata {
     #[builder]
     pub async fn from_issuer<C: HttpClient>(
         #[builder(start_fn, into)] issuer: &str,
-        http_client: &C,
+        #[builder(finish_fn)] http_client: &C,
     ) -> Result<Self, OidcProviderFetchError<C::Error, <C::Response as HttpResponse>::Error>> {
         let configuration_endpoint = append_openid_config(issuer).context(BadIssuerSnafu)?;
         let request = http::Request::get(configuration_endpoint)
@@ -127,7 +127,13 @@ impl OidcProviderMetadata {
             let v = serde_json::from_slice::<Self>(&body).context(ParseJsonSnafu)?;
             Ok(v)
         } else {
-            Err(todo!())
+            let status = response.status();
+            let body = response.body().await.context(BadResponseSnafu)?;
+            FailedSnafu {
+                status,
+                body: String::from_utf8_lossy(&body).to_string(),
+            }
+            .fail()
         }
     }
 }
@@ -153,6 +159,10 @@ pub enum OidcProviderFetchError<
     BadIssuer {
         /// The underlying error when parsing the issuer as a URL.
         source: http::Error,
+    },
+    Failed {
+        status: StatusCode,
+        body: String,
     },
 }
 

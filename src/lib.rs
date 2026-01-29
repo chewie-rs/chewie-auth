@@ -44,7 +44,7 @@ mod server_metadata;
 pub mod signer;
 pub mod token;
 
-pub use error::Error;
+pub use error::{BoxedError, Error};
 pub use server_metadata::AuthorizationServerMetadata;
 pub use token::{AccessToken, RefreshToken};
 

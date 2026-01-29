@@ -163,7 +163,6 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
         };
 
         Ok(CallbackState {
-            authorization_url,
             pkce_verifier: Some(pkce.verifier),
             state: start_input.state,
         })
@@ -174,24 +173,37 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
         http_client: &C,
         callback_state: &CallbackState,
         complete_input: CompleteInput,
-    ) -> Result<TokenResponse, <Grant<Auth, DPoP> as ExchangeGrant>::Error<C>> {
+    ) -> Result<TokenResponse, CompleteError<<Grant<Auth, DPoP> as ExchangeGrant>::Error<C>>> {
+        // CSRF protection.
         if callback_state
             .state
             .as_bytes()
             .ct_ne(complete_input.state.as_bytes())
             .into()
         {
-            // This should be an error
-            todo!();
+            return StateMismatchSnafu {
+                original: callback_state.state.clone(),
+                callback: complete_input.state,
+            }
+            .fail();
         }
 
+        // RFC 9207 - check issuer match.
         if self.authorization_response_iss_parameter_supported
-            && let Some(issuer) = complete_input.iss
             && let Some(config_issuer) = &self.issuer
-            && issuer.as_bytes().ct_ne(config_issuer.as_bytes()).into()
         {
-            // This should be an error
-            todo!()
+            if let Some(issuer) = complete_input.iss {
+                if issuer.as_bytes().ct_ne(config_issuer.as_bytes()).into() {
+                    return IssuerMismatchSnafu {
+                        original: config_issuer,
+                        callback: issuer,
+                    }
+                    .fail();
+                }
+            } else {
+                // Server claimed to support RFC 9207 but no issuer received.
+                return MissingIssuerSnafu.fail();
+            }
         }
 
         let token = self
@@ -203,10 +215,19 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
                     pkce_verifier: callback_state.pkce_verifier.clone(),
                 },
             )
-            .await?;
+            .await
+            .context(GrantSnafu)?;
 
         Ok(token)
     }
+}
+
+#[derive(Debug, Clone, Snafu)]
+pub enum CompleteError<GrantErr: crate::Error + 'static> {
+    Grant { source: GrantErr },
+    IssuerMismatch { original: String, callback: String },
+    StateMismatch { original: String, callback: String },
+    MissingIssuer,
 }
 
 #[derive(Debug, Clone, Builder)]
@@ -257,7 +278,6 @@ pub struct CompleteInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallbackState {
-    pub authorization_url: Url,
     pub pkce_verifier: Option<String>,
     pub state: String,
 }

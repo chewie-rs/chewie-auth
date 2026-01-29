@@ -20,7 +20,7 @@ The design stands on a few central ideas:
  - Flows implement a durable workflow - the _process_ by which you get a token
 */
 #![forbid(unsafe_code)]
-//#![deny(missing_docs)]
+#![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::panic)]

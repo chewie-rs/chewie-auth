@@ -91,7 +91,7 @@ impl<Sec: Secret<Output = SecretString>> ClientSecret<Sec> {
         AuthenticationParams::builder()
             .form_params(bon::map! {
                 "client_id": self.client_id.clone(),
-                "client_secret": client_secret.expose_secret().to_string()
+                "client_secret": client_secret.clone()
             })
             .build()
     }

@@ -73,7 +73,10 @@ impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> OAuthAuthorizer<G, S> {
                 .await
                 .context(DPoPSnafu)?
             {
-                headers.insert("DPoP", proof.parse().context(InvalidHeaderSnafu)?);
+                headers.insert(
+                    "DPoP",
+                    proof.expose_secret().parse().context(InvalidHeaderSnafu)?,
+                );
                 headers.insert(
                     AUTHORIZATION,
                     format!("DPoP {}", token.access_token.expose_secret())

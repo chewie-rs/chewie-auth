@@ -60,7 +60,7 @@ async fn example(http_client: &reqwest::Client, oidc_provider_metadata: &OidcPro
 ## Feature Set
 
 - Request an access token using most common `OAuth2` grants.
-- Workflows for multi-step token acquisition. Workflows encode many required steps for secure implementations that are can be missed when manually implementing, e.g. issuer/state/nonce checks for authorization code grant.
+- Workflows for multi-step token acquisition. Workflows encode many required steps for secure implementations that can be missed when manually implementing, e.g. issuer/state/nonce checks for authorization code grant.
 - Client authentication supports public clients, client credentials, and signed JWTs (`private_key_jwt`/`client_secret_jwt` from RFC 7523).
 - Secret abstraction allows secret data to come from secret managers, etc. without exposing them in the API.
 - Supports proof of possession using `DPoP`.

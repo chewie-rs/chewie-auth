@@ -4,6 +4,7 @@ use http::{
     HeaderValue, Method, Request, StatusCode, Uri,
     header::{CONTENT_TYPE, InvalidHeaderValue},
 };
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use snafu::prelude::*;
 
@@ -63,7 +64,7 @@ impl<F: Serialize, D: AuthorizationServerDPoP> OAuth2FormRequest<'_, F, D> {
         {
             parts.headers.insert(
                 "DPoP",
-                HeaderValue::from_str(&proof).context(BadHeaderSnafu)?,
+                HeaderValue::from_str(proof.expose_secret()).context(BadHeaderSnafu)?,
             );
         }
 

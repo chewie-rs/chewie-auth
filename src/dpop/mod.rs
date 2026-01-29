@@ -6,7 +6,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use bon::Builder;
 use http::{Method, Uri, uri::Scheme};
 use parking_lot::{Mutex, RwLock};
-use secrecy::ExposeSecret as _;
+use secrecy::{ExposeSecret as _, SecretString};
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 
@@ -32,7 +32,7 @@ pub trait AuthorizationServerDPoP: Clone + MaybeSendSync {
         &self,
         method: &Method,
         uri: &Uri,
-    ) -> impl Future<Output = Result<Option<String>, Self::Error>> + MaybeSend;
+    ) -> impl Future<Output = Result<Option<SecretString>, Self::Error>> + MaybeSend;
 
     fn to_resource_server_dpop(&self) -> Self::ResourceServerDPoP;
 }
@@ -50,7 +50,7 @@ pub trait ResourceServerDPoP: Clone + MaybeSendSync {
         method: &Method,
         uri: &Uri,
         access_token: &AccessToken,
-    ) -> impl Future<Output = Result<Option<String>, Self::Error>> + MaybeSend;
+    ) -> impl Future<Output = Result<Option<SecretString>, Self::Error>> + MaybeSend;
 }
 
 /// This represents a grant without the ability to use `DPoP` to constrain tokens.
@@ -63,7 +63,11 @@ impl AuthorizationServerDPoP for NoDPoP {
 
     fn update_nonce(&self, _nonce: String) {}
 
-    async fn proof(&self, _method: &Method, _uri: &Uri) -> Result<Option<String>, Self::Error> {
+    async fn proof(
+        &self,
+        _method: &Method,
+        _uri: &Uri,
+    ) -> Result<Option<SecretString>, Self::Error> {
         Ok(None)
     }
 
@@ -82,7 +86,7 @@ impl ResourceServerDPoP for NoDPoP {
         _method: &Method,
         _uri: &Uri,
         _access_token: &AccessToken,
-    ) -> Result<Option<String>, Self::Error> {
+    ) -> Result<Option<SecretString>, Self::Error> {
         Ok(None)
     }
 }
@@ -106,7 +110,7 @@ impl<Sgn: JwsSigner + HasPublicKey> AuthorizationServerDPoP for DPoP<Sgn> {
         let _ = self.nonce.lock().insert(Arc::new(nonce));
     }
 
-    async fn proof(&self, method: &Method, uri: &Uri) -> Result<Option<String>, Self::Error> {
+    async fn proof(&self, method: &Method, uri: &Uri) -> Result<Option<SecretString>, Self::Error> {
         let nonce = self.nonce.lock().clone();
         sign_proof(&self.signer, method, uri, None, nonce).await
     }
@@ -137,7 +141,7 @@ impl<Sgn: JwsSigner + HasPublicKey> ResourceServerDPoP for ResourceDPoP<Sgn> {
         method: &Method,
         uri: &Uri,
         access_token: &AccessToken,
-    ) -> Result<Option<String>, Self::Error> {
+    ) -> Result<Option<SecretString>, Self::Error> {
         let origin = origin_from_uri(uri);
         let nonce = self.nonces.read().get(&origin).cloned();
         sign_proof(&self.signer, method, uri, Some(access_token), nonce).await
@@ -158,7 +162,7 @@ async fn sign_proof<Sgn: JwsSigner + HasPublicKey>(
     htu: &Uri,
     access_token: Option<&AccessToken>,
     nonce: Option<Arc<String>>,
-) -> Result<Option<String>, JwsSerializationError<<Sgn as JwsSigner>::Error>> {
+) -> Result<Option<SecretString>, JwsSerializationError<<Sgn as JwsSigner>::Error>> {
     #[derive(Debug, Clone, Serialize)]
     struct DPoPHeaders {
         jwk: serde_json::Value,

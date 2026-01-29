@@ -2,6 +2,7 @@ use std::{borrow::Cow, time::Duration};
 
 use base64::{Engine, prelude::BASE64_URL_SAFE_NO_PAD};
 use bon::Builder;
+use secrecy::SecretString;
 use serde::Serialize;
 use snafu::prelude::*;
 use uuid::Uuid;
@@ -143,7 +144,7 @@ where
     async fn attempt_to_jws_compact<Sgn: JwsSigner>(
         &self,
         signer: &Sgn,
-    ) -> Result<String, JwsSerializationError<Sgn::Error>> {
+    ) -> Result<SecretString, JwsSerializationError<Sgn::Error>> {
         let key_metadata = signer.key_metadata();
 
         let jwt_header = JwtHeader {
@@ -177,7 +178,7 @@ where
         let signature_b64 = BASE64_URL_SAFE_NO_PAD.encode(&signature);
         let result = [signing_input, signature_b64].join(".");
 
-        Ok(result)
+        Ok(result.into())
     }
 
     /// Creates a string using the JWS compact serialization.
@@ -188,7 +189,7 @@ where
     pub async fn to_jws_compact<Sgn: JwsSigner>(
         &self,
         signer: &Sgn,
-    ) -> Result<String, JwsSerializationError<Sgn::Error>> {
+    ) -> Result<SecretString, JwsSerializationError<Sgn::Error>> {
         match self.attempt_to_jws_compact(signer).await {
             Ok(jws) => Ok(jws),
             Err(JwsSerializationError::Sign {

@@ -20,9 +20,47 @@ pub use client_secret::{ClientSecret, ClientSecretBuilder};
 pub use jwt_bearer::{JwtBearer, JwtBearerBuilder};
 
 use http::HeaderMap;
+use secrecy::{ExposeSecret, SecretString};
+use serde::Serialize;
 use url::Url;
 
 use crate::platform::{MaybeSend, MaybeSendSync};
+
+#[derive(Debug, Clone)]
+pub enum FormValue {
+    NonSensitive(Cow<'static, str>),
+    Sensitive(SecretString),
+}
+
+impl From<&'static str> for FormValue {
+    fn from(value: &'static str) -> Self {
+        Self::NonSensitive(Cow::Borrowed(value))
+    }
+}
+
+impl From<Cow<'static, str>> for FormValue {
+    fn from(value: Cow<'static, str>) -> Self {
+        Self::NonSensitive(value)
+    }
+}
+
+impl From<SecretString> for FormValue {
+    fn from(value: SecretString) -> Self {
+        Self::Sensitive(value)
+    }
+}
+
+impl Serialize for FormValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            FormValue::NonSensitive(cow) => cow.serialize(serializer),
+            FormValue::Sensitive(secret_box) => secret_box.expose_secret().serialize(serializer),
+        }
+    }
+}
 
 /// The authentication credentials that need to be added to the request.
 #[derive(Debug, Clone, Builder)]
@@ -30,7 +68,7 @@ pub struct AuthenticationParams {
     /// Additional headers to include in the request.
     pub headers: Option<HeaderMap>,
     /// Additional form parameters to include in the request body.
-    pub form_params: Option<Vec<(&'static str, Cow<'static, str>)>>,
+    pub form_params: Option<Vec<(&'static str, FormValue)>>,
 }
 
 /// Trait for `OAuth2` client authentication.

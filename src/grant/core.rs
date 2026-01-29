@@ -91,6 +91,7 @@ pub struct TokenResponse {
     #[builder(into)]
     pub issued_token_type: Option<String>,
     #[builder(skip = crate::platform::SystemTime::now())]
+    #[serde(skip, default = "crate::platform::SystemTime::now")]
     pub received_at: crate::platform::SystemTime,
     #[serde(flatten)]
     extra: Option<HashMap<String, Value>>,

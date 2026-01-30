@@ -58,7 +58,7 @@ pub trait HttpResponse {
     fn body(self) -> impl Future<Output = Result<Bytes, Self::Error>> + MaybeSend;
 }
 
-#[cfg(feature = "http-client-reqwest-0_13")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "http-client-reqwest-0_13"))]
 impl HttpResponse for reqwest::Response {
     type Error = reqwest_0_13::Error;
 
@@ -80,14 +80,14 @@ impl HttpResponse for reqwest::Response {
     }
 }
 
-#[cfg(feature = "http-client-reqwest-0_13")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "http-client-reqwest-0_13"))]
 impl crate::Error for reqwest_0_13::Error {
     fn is_retryable(&self) -> bool {
         self.is_connect()
     }
 }
 
-#[cfg(feature = "http-client-reqwest-0_13")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "http-client-reqwest-0_13"))]
 impl HttpClient for reqwest::Client {
     /// The response type is `reqwest::Response`.
     type Response = reqwest::Response;
@@ -120,5 +120,5 @@ impl HttpClient for reqwest::Client {
     }
 }
 
-#[cfg(feature = "http-client-reqwest-0_13")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "http-client-reqwest-0_13"))]
 pub use reqwest as reqwest_0_13;

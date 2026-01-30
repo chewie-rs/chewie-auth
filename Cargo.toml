@@ -13,8 +13,9 @@ readme = "README.md"
 rust-version = "1.88"
 
 [features]
-default = ["crypto-native"]
+default = ["crypto-native", "crypto-webcrypto"]
 crypto-native = ["dep:p256", "dep:p384", "dep:p521"]
+crypto-webcrypto = ["dep:serde_bytes", "dep:serde-wasm-bindgen", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
 http-client-reqwest-0_13 = ["dep:reqwest"]
 
 [dependencies]
@@ -31,15 +32,20 @@ rand = "0.9"
 reqwest = { version = "0.13", default-features = false, optional = true }
 secrecy = { version = "0.10", features = ["serde"] }
 serde = { version = "1", features = ["derive", "rc"] }
+serde_bytes = { version = "0.11", optional = true }
 serde_html_form = { version = "0.3", default-features = false, features = ["std"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_qs = "0.15"
+serde-wasm-bindgen = { version = "0.6", optional = true }
 sha2 = { version = "0.10" }
 snafu = { version = "0.8", features = ["rust_1_81"] }
 subtle = "2"
 tokio = { version = "1", default-features = false, features = ["rt", "sync", "time"] }
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1.13", features = ["v7"] }
+wasm-bindgen = { version = "0.2", optional = true, features = ["std"] }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", optional = true, features = ["Crypto", "CryptoKey", "CryptoKeyPair", "JsonWebKey", "SubtleCrypto", "Window"]}
 
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
 web-time = { version = "1", features = ["serde"] }

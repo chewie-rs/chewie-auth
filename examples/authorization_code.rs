@@ -8,7 +8,7 @@ use snafu::prelude::*;
 
 #[tokio::main]
 pub async fn main() -> Result<(), snafu::Whatever> {
-    let http_client = reqwest::Client::new();
+    let http_client = reqwest_0_13::Client::new();
     let oidc_provider_metadata = OidcProviderMetadata::from_issuer(
         std::env::var("ISSUER")
             .whatever_context("Failed to get ISSUER")?

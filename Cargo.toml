@@ -16,7 +16,7 @@ rust-version = "1.88"
 default = ["crypto-native", "crypto-webcrypto", "http-client-fetch"]
 crypto-native = ["dep:p256", "dep:p384", "dep:p521"]
 crypto-webcrypto = ["dep:serde_bytes", "dep:serde-wasm-bindgen", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
-http-client-reqwest-0_13 = ["dep:reqwest_0_13"]
+http-client-reqwest-0_13 = ["dep:reqwest"]
 http-client-fetch = []
 
 [dependencies]
@@ -30,7 +30,7 @@ p384 = { version = "0.14.0-rc.6", optional = true, default-features = false, fea
 p521 = { version = "0.14.0-rc.6", optional = true, default-features = false, features = ["ecdsa", "pem", "std", "getrandom"] }
 parking_lot = "0.12"
 rand = "0.9"
-reqwest_0_13 = { package = "reqwest", version = "0.13", default-features = false, optional = true }
+reqwest = { version = "0.13", default-features = false, optional = true }
 secrecy = { version = "0.10", features = ["serde"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_bytes = { version = "0.11", optional = true }
@@ -58,5 +58,5 @@ uuid = { version = "1", features = ["js"] }
 
 [dev-dependencies]
 chewie-auth = { path = ".", features = ["http-client-reqwest-0_13"] }
-reqwest_0_13 = { package = "reqwest", version = "0.13" }
+reqwest = { version = "0.13" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

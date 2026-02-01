@@ -5,6 +5,7 @@ use serde::Serialize;
 use url::Url;
 
 use crate::{
+    AuthorizationServerMetadata,
     client_auth::ClientAuthentication,
     dpop::{AuthorizationServerDPoP, NoDPoP},
     grant::{
@@ -14,7 +15,6 @@ use crate::{
         core::OAuth2ExchangeGrant,
         refresh,
     },
-    oidc::discovery::OidcProviderMetadata,
 };
 
 /// Client credentials grant.
@@ -34,9 +34,9 @@ pub struct Grant<Auth: ClientAuthentication, DPoP: AuthorizationServerDPoP = NoD
 }
 
 impl<Auth: ClientAuthentication, DPoP: AuthorizationServerDPoP> Grant<Auth, DPoP> {
-    /// Configure the grant from OIDC provider metadata.
-    pub fn from_oidc_provider_metadata(
-        oidc_metadata: &OidcProviderMetadata,
+    /// Configure the grant from authorization server metadata.
+    pub fn from_authorization_server_metadata(
+        oidc_metadata: &AuthorizationServerMetadata,
     ) -> GrantBuilder<Auth, DPoP, SetTokenEndpointAuthMethodsSupported<SetTokenEndpoint>> {
         Self::builder()
             .token_endpoint(oidc_metadata.token_endpoint.clone())

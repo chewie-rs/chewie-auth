@@ -3,6 +3,7 @@ use serde::Serialize;
 use url::Url;
 
 use crate::{
+    AuthorizationServerMetadata,
     client_auth::ClientAuthentication,
     dpop::{AuthorizationServerDPoP, NoDPoP},
     grant::{
@@ -24,7 +25,7 @@ use crate::{
 /// ## Simple flow example (public `OAuth2` client, no `DPoP`).
 ///
 /// ```rust
-/// # async fn test(client: reqwest::Client, oidc_provider_metadata: &chewie_auth::oidc::discovery::OidcProviderMetadata) {
+/// # async fn test(client: reqwest::Client, authorization_server_metadata: &chewie_auth::AuthorizationServerMetadata) {
 /// use chewie_auth::prelude::*;
 /// use chewie_auth::grant::TokenResponse;
 /// use chewie_auth::grant::authorization_code;
@@ -32,7 +33,7 @@ use crate::{
 /// use chewie_auth::dpop::NoDPoP;
 ///
 /// let grant: authorization_code::Grant<ClientIdOnly> =
-///     authorization_code::Grant::from_oidc_provider_metadata(oidc_provider_metadata)
+///     authorization_code::Grant::from_authorization_server_metadata(authorization_server_metadata)
 ///         .redirect_url("https://redirect_url".parse().unwrap())
 ///         .client_auth(ClientIdOnly::new("client_id"))
 ///         .dpop(NoDPoP)
@@ -52,9 +53,9 @@ impl<Auth: ClientAuthentication, DPoP: AuthorizationServerDPoP> Grant<Auth, DPoP
         GrantConfig::builder()
     }
 
-    /// Configure the grant from OIDC provider metadata.
-    pub fn from_oidc_provider_metadata(
-        oidc_metadata: &crate::oidc::discovery::OidcProviderMetadata,
+    /// Configure the grant from authorization server metadata.
+    pub fn from_authorization_server_metadata(
+        oidc_metadata: &AuthorizationServerMetadata,
     ) -> GrantConfigBuilder<Auth, DPoP, SetTokenEndpointAuthMethodsSupported<SetTokenEndpoint>>
     {
         Self::builder()

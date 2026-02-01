@@ -3,8 +3,8 @@ use super::{HttpClient, HttpResponse};
 use bytes::Bytes;
 use http::{HeaderMap, Request, StatusCode};
 
-impl HttpResponse for reqwest_0_13::Response {
-    type Error = reqwest_0_13::Error;
+impl HttpResponse for reqwest::Response {
+    type Error = reqwest::Error;
 
     /// Returns the HTTP status code of the `reqwest::Response`.
     fn status(&self) -> StatusCode {
@@ -24,17 +24,17 @@ impl HttpResponse for reqwest_0_13::Response {
     }
 }
 
-impl crate::Error for reqwest_0_13::Error {
+impl crate::Error for reqwest::Error {
     fn is_retryable(&self) -> bool {
         self.is_connect()
     }
 }
 
-impl HttpClient for reqwest_0_13::Client {
+impl HttpClient for reqwest::Client {
     /// The response type is `reqwest::Response`.
-    type Response = reqwest_0_13::Response;
+    type Response = reqwest::Response;
     /// The error type is `reqwest::Error`.
-    type Error = reqwest_0_13::Error;
+    type Error = reqwest::Error;
 
     /// Executes an `http::Request` using the `reqwest::Client`.
     ///

@@ -1,10 +1,16 @@
+//! RFC 8414 - OAuth 2.0 Authorization Server Metadata.
+//!
+//! This implements support for RFC 8414 - metadata about an authorization
+//! server.
+
 use bon::bon;
 use bytes::Bytes;
-use http::{Method, Uri};
+use http::{StatusCode, Uri};
 use serde::Deserialize;
+use snafu::prelude::*;
 use url::Url;
 
-use crate::http::HttpClient;
+use crate::http::{HttpClient, HttpResponse};
 
 fn default_response_modes_supported() -> Vec<String> {
     bon::vec!["query", "fragment"]
@@ -20,33 +26,34 @@ fn default_auth_methods_supported() -> Vec<String> {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthorizationServerMetadata {
-    issuer: String,
-    authorization_endpoint: Option<Url>,
-    token_endpoint: Option<Url>,
-    jwks_uri: Option<Url>,
-    registration_endpoint: Option<Url>,
-    scopes_supported: Option<Vec<String>>,
-    response_types_supported: Vec<String>,
+    pub issuer: String,
+    pub authorization_endpoint: Option<Url>,
+    /// Token endpoint. Required when supporting grants other than the implicit grant.
+    pub token_endpoint: Url,
+    pub jwks_uri: Option<Url>,
+    pub registration_endpoint: Option<Url>,
+    pub scopes_supported: Option<Vec<String>>,
+    pub response_types_supported: Vec<String>,
     #[serde(default = "default_response_modes_supported")]
-    response_modes_supported: Vec<String>,
+    pub response_modes_supported: Vec<String>,
     #[serde(default = "default_grant_types_supported")]
-    grant_types_supported: Vec<String>,
+    pub grant_types_supported: Vec<String>,
     #[serde(default = "default_auth_methods_supported")]
-    token_endpoint_auth_methods_supported: Vec<String>,
-    token_endpoint_auth_signing_alg_values_supported: Option<Vec<String>>,
-    service_documentation: Option<String>,
-    ui_locales_supported: Option<Vec<String>>,
-    op_policy_uri: Option<Url>,
-    op_tos_uri: Option<Url>,
-    revocation_endpoint: Option<Url>,
+    pub token_endpoint_auth_methods_supported: Vec<String>,
+    pub token_endpoint_auth_signing_alg_values_supported: Option<Vec<String>>,
+    pub service_documentation: Option<String>,
+    pub ui_locales_supported: Option<Vec<String>>,
+    pub op_policy_uri: Option<Url>,
+    pub op_tos_uri: Option<Url>,
+    pub revocation_endpoint: Option<Url>,
     #[serde(default = "default_auth_methods_supported")]
-    revocation_endpoint_auth_methods_supported: Vec<String>,
-    revocation_endpoint_auth_signing_alg_values_supported: Option<Vec<String>>,
-    introspection_endpoint: Option<Url>,
-    introspection_endpoint_auth_methods_supported: Option<Vec<String>>,
-    introspection_endpoint_auth_signing_alg_values_supported: Option<Vec<String>>,
+    pub revocation_endpoint_auth_methods_supported: Vec<String>,
+    pub revocation_endpoint_auth_signing_alg_values_supported: Option<Vec<String>>,
+    pub introspection_endpoint: Option<Url>,
+    pub introspection_endpoint_auth_methods_supported: Option<Vec<String>>,
+    pub introspection_endpoint_auth_signing_alg_values_supported: Option<Vec<String>>,
     #[serde(default = "Vec::new")]
-    code_challenge_methods_supported: Vec<String>,
+    pub code_challenge_methods_supported: Vec<String>,
     /**
      * RFC 8628 - OAuth 2.0 Device Authorization Grant
      */
@@ -55,16 +62,16 @@ pub struct AuthorizationServerMetadata {
      * RFC 9126 - OAuth 2.0 Pushed Authorization Requests
      */
     // Specifies the URL of the pushed authorization request endpoint (RFC 9126 §5).
-    pushed_authorization_request_endpoint: Option<Url>,
+    pub pushed_authorization_request_endpoint: Option<Url>,
     // If true, indicates that pushed authorization requests are required (RFC 9126 §5).
     #[serde(default)]
-    require_pushed_authorization_requests: bool,
+    pub require_pushed_authorization_requests: bool,
     /**
      * RFC 9207 - OAuth 2.0 Authorization Server Issuer Identification
      */
     // Indicates support for an `iss` identifier in the authorization endpoint response (RFC 9207 §3).
     #[serde(default)]
-    authorization_response_iss_parameter_supported: bool,
+    pub authorization_response_iss_parameter_supported: bool,
 }
 
 #[bon]
@@ -72,19 +79,150 @@ impl AuthorizationServerMetadata {
     #[builder]
     pub async fn from_issuer<C: HttpClient>(
         #[builder(start_fn, into)] issuer: &str,
-        http_client: &C,
-        #[builder(into)] _well_known_path: &str,
-    ) -> Self {
-        let issuer_as_uri = issuer.parse::<Uri>().unwrap();
-        let (mut parts, ()) = http::Request::new(()).into_parts();
-        parts.method = Method::GET;
+        #[builder(finish_fn)] http_client: &C,
+        #[builder(into, default = "openid-configuration")] suffix: &str,
+    ) -> Result<Self, OidcProviderFetchError<C::Error, <C::Response as HttpResponse>::Error>> {
+        let configuration_endpoint =
+            append_openid_config(issuer, suffix).context(BadIssuerSnafu)?;
+        let request = http::Request::get(configuration_endpoint)
+            .body(Bytes::new())
+            .context(InvalidBodySnafu)?;
+        let response = http_client
+            .execute(request)
+            .await
+            .context(BadRequestSnafu)?;
 
-        let _path = issuer_as_uri.path();
+        if response.status().is_success() {
+            let body = response.body().await.context(BadResponseSnafu)?;
+            let v = serde_json::from_slice::<Self>(&body).context(ParseJsonSnafu)?;
+            Ok(v)
+        } else {
+            let status = response.status();
+            let body = response.body().await.context(BadResponseSnafu)?;
+            FailedSnafu {
+                status,
+                body: String::from_utf8_lossy(&body).to_string(),
+            }
+            .fail()
+        }
+    }
+}
 
-        let request = http::Request::from_parts(parts, Bytes::new());
+#[derive(Debug, Snafu)]
+pub enum OidcProviderFetchError<
+    HttpErr: crate::Error + 'static,
+    HttpRespErr: crate::Error + 'static,
+> {
+    InvalidBody {
+        source: http::Error,
+    },
+    BadRequest {
+        /// The underlying error when making the HTTP request.
+        source: HttpErr,
+    },
+    BadResponse {
+        source: HttpRespErr,
+    },
+    ParseJson {
+        source: serde_json::Error,
+    },
+    BadIssuer {
+        /// The underlying error when parsing the issuer as a URL.
+        source: http::Error,
+    },
+    Failed {
+        status: StatusCode,
+        body: String,
+    },
+}
 
-        http_client.execute(request).await.unwrap();
+fn append_openid_config(issuer: &str, uri_suffix: &str) -> Result<Uri, http::Error> {
+    let issuer_as_uri = issuer.parse::<Uri>()?;
 
-        todo!()
+    let path = issuer_as_uri.path();
+    let cleaned_path = path.strip_suffix('/').unwrap_or(path);
+    let new_path = format!("{cleaned_path}/.well-known/{uri_suffix}");
+    let mut parts = issuer_as_uri.into_parts();
+    parts.path_and_query = Some(new_path.try_into()?);
+    Ok(Uri::from_parts(parts)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::AuthorizationServerMetadata;
+
+    /// Test the document from OIDC Discovery §4.2.
+    #[test]
+    fn test_oidc_spec() {
+        let source = r#"
+            {
+             "issuer":
+               "https://server.example.com",
+             "authorization_endpoint":
+               "https://server.example.com/connect/authorize",
+             "token_endpoint":
+               "https://server.example.com/connect/token",
+             "token_endpoint_auth_methods_supported":
+               ["client_secret_basic", "private_key_jwt"],
+             "token_endpoint_auth_signing_alg_values_supported":
+               ["RS256", "ES256"],
+             "userinfo_endpoint":
+               "https://server.example.com/connect/userinfo",
+             "check_session_iframe":
+               "https://server.example.com/connect/check_session",
+             "end_session_endpoint":
+               "https://server.example.com/connect/end_session",
+             "jwks_uri":
+               "https://server.example.com/jwks.json",
+             "registration_endpoint":
+               "https://server.example.com/connect/register",
+             "scopes_supported":
+               ["openid", "profile", "email", "address",
+                "phone", "offline_access"],
+             "response_types_supported":
+               ["code", "code id_token", "id_token", "id_token token"],
+             "acr_values_supported":
+               ["urn:mace:incommon:iap:silver",
+                "urn:mace:incommon:iap:bronze"],
+             "subject_types_supported":
+               ["public", "pairwise"],
+             "userinfo_signing_alg_values_supported":
+               ["RS256", "ES256", "HS256"],
+             "userinfo_encryption_alg_values_supported":
+               ["RSA-OAEP-256", "A128KW"],
+             "userinfo_encryption_enc_values_supported":
+               ["A128CBC-HS256", "A128GCM"],
+             "id_token_signing_alg_values_supported":
+               ["RS256", "ES256", "HS256"],
+             "id_token_encryption_alg_values_supported":
+               ["RSA-OAEP-256", "A128KW"],
+             "id_token_encryption_enc_values_supported":
+               ["A128CBC-HS256", "A128GCM"],
+             "request_object_signing_alg_values_supported":
+               ["none", "RS256", "ES256"],
+             "display_values_supported":
+               ["page", "popup"],
+             "claim_types_supported":
+               ["normal", "distributed"],
+             "claims_supported":
+               ["sub", "iss", "auth_time", "acr",
+                "name", "given_name", "family_name", "nickname",
+                "profile", "picture", "website",
+                "email", "email_verified", "locale", "zoneinfo",
+                "http://example.info/claims/groups"],
+             "claims_parameter_supported":
+               true,
+             "service_documentation":
+               "http://server.example.com/connect/service_documentation.html",
+             "ui_locales_supported":
+               ["en-US", "en-GB", "en-CA", "fr-FR", "fr-CA"]
+            }
+"#;
+        let parsed = serde_json::from_str::<AuthorizationServerMetadata>(source).unwrap();
+        assert_eq!(parsed.issuer, "https://server.example.com");
+        assert_eq!(
+            parsed.authorization_endpoint,
+            "https://server.example.com/connect/authorize".parse().ok()
+        );
     }
 }

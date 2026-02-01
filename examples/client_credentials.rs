@@ -1,10 +1,10 @@
 use chewie_auth::{
+    AuthorizationServerMetadata,
     authorizer::OAuthAuthorizer,
     cache::{InMemoryStore, OAuthTokenCache},
     client_auth::ClientSecret,
     dpop::DPoP,
     grant::client_credentials,
-    oidc::discovery::OidcProviderMetadata,
     secrets::{EnvVarSecret, StringEncoding},
     signer::native::Es256PrivateKey,
 };
@@ -12,8 +12,8 @@ use snafu::prelude::*;
 
 #[tokio::main]
 pub async fn main() -> Result<(), snafu::Whatever> {
-    let http_client = reqwest_0_13::Client::new();
-    let oidc_provider_metadata = OidcProviderMetadata::from_issuer(
+    let http_client = reqwest::Client::new();
+    let authorization_server_metadata = AuthorizationServerMetadata::from_issuer(
         std::env::var("ISSUER")
             .whatever_context("Failed to get ISSUER")?
             .as_str(),
@@ -22,15 +22,17 @@ pub async fn main() -> Result<(), snafu::Whatever> {
     .await
     .whatever_context("Failed to get metadata")?;
 
-    let grant = client_credentials::Grant::from_oidc_provider_metadata(&oidc_provider_metadata)
-        .client_auth(
-            ClientSecret::builder()
-                .client_id(std::env::var("CLIENT_ID").whatever_context("Failed to get CLIENT_ID")?)
-                .client_secret(EnvVarSecret::new("CLIENT_SECRET", StringEncoding))
-                .build(),
-        )
-        .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())
-        .build();
+    let grant = client_credentials::Grant::from_authorization_server_metadata(
+        &authorization_server_metadata,
+    )
+    .client_auth(
+        ClientSecret::builder()
+            .client_id(std::env::var("CLIENT_ID").whatever_context("Failed to get CLIENT_ID")?)
+            .client_secret(EnvVarSecret::new("CLIENT_SECRET", StringEncoding))
+            .build(),
+    )
+    .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())
+    .build();
 
     let cache = OAuthTokenCache::builder()
         .grant(grant)

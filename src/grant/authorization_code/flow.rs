@@ -6,6 +6,7 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 use crate::{
+    AuthorizationServerMetadata,
     client_auth::ClientAuthentication,
     dpop::{AuthorizationServerDPoP, NoDPoP},
     grant::{
@@ -47,21 +48,23 @@ fn mk_scopes(scopes: impl IntoIterator<Item = String>, separator: &str) -> Optio
 /// ## Simple flow example (public `OAuth2` client, no `DPoP`).
 ///
 /// ```rust, no_run
+/// use chewie_auth::AuthorizationServerMetadata;
 /// use chewie_auth::grant::authorization_code;
 /// use chewie_auth::client_auth::ClientIdOnly;
 /// use chewie_auth::dpop::NoDPoP;
 ///
-/// let oidc_provider_metadata: chewie_auth::oidc::discovery::OidcProviderMetadata = todo!();
+/// let authorization_server_metadata: AuthorizationServerMetadata = todo!();
 ///
 /// let grant: authorization_code::Grant<ClientIdOnly> =
-///     authorization_code::Grant::from_oidc_provider_metadata(&oidc_provider_metadata)
+///     authorization_code::Grant::from_authorization_server_metadata(&authorization_server_metadata)
 ///         .redirect_url("https://redirect_url".parse().unwrap())
 ///         .client_auth(ClientIdOnly::new("client_id"))
 ///         .dpop(NoDPoP)
 ///         .build();
 ///
 /// let flow: authorization_code::Flow<ClientIdOnly> =
-///     authorization_code::Flow::from_oidc_provider_metadata(&oidc_provider_metadata)
+///     authorization_code::Flow::from_authorization_server_metadata(&authorization_server_metadata)
+///         .unwrap()
 ///         .grant(grant)
 ///         .build();
 /// ```
@@ -92,30 +95,34 @@ pub struct Flow<Auth: ClientAuthentication, DPoP: AuthorizationServerDPoP = NoDP
 impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'static>
     Flow<Auth, DPoP>
 {
-    /// Configure the flow from OIDC provider metadata.
-    pub fn from_oidc_provider_metadata(
-        oidc_metadata: &crate::oidc::discovery::OidcProviderMetadata,
-    ) -> FlowBuilder<
-        Auth,
-        DPoP,
-        SetAuthorizationResponseIssParameterSupported<
-            SetRequirePushedAuthorizationRequests<
-                SetPushedAuthorizationRequestEndpoint<SetIssuer<SetAuthorizationEndpoint>>,
+    /// Configure the flow from authorization server metadata.
+    pub fn from_authorization_server_metadata(
+        oidc_metadata: &AuthorizationServerMetadata,
+    ) -> Option<
+        FlowBuilder<
+            Auth,
+            DPoP,
+            SetAuthorizationResponseIssParameterSupported<
+                SetRequirePushedAuthorizationRequests<
+                    SetPushedAuthorizationRequestEndpoint<SetIssuer<SetAuthorizationEndpoint>>,
+                >,
             >,
         >,
     > {
-        Self::builder()
-            .authorization_endpoint(oidc_metadata.authorization_endpoint.clone())
-            .issuer(oidc_metadata.issuer.clone())
-            .maybe_pushed_authorization_request_endpoint(
-                oidc_metadata.pushed_authorization_request_endpoint.clone(),
-            )
-            .require_pushed_authorization_requests(
-                oidc_metadata.require_pushed_authorization_requests,
-            )
-            .authorization_response_iss_parameter_supported(
-                oidc_metadata.authorization_response_iss_parameter_supported,
-            )
+        Some(
+            Self::builder()
+                .authorization_endpoint(oidc_metadata.authorization_endpoint.clone()?)
+                .issuer(oidc_metadata.issuer.clone())
+                .maybe_pushed_authorization_request_endpoint(
+                    oidc_metadata.pushed_authorization_request_endpoint.clone(),
+                )
+                .require_pushed_authorization_requests(
+                    oidc_metadata.require_pushed_authorization_requests,
+                )
+                .authorization_response_iss_parameter_supported(
+                    oidc_metadata.authorization_response_iss_parameter_supported,
+                ),
+        )
     }
 
     pub async fn start<C: HttpClient>(
@@ -123,7 +130,7 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
         http_client: &C,
         start_input: StartInput,
     ) -> Result<
-        CallbackState,
+        StartResult,
         StartError<Auth::Error, C::Error, <C::Response as HttpResponse>::Error, DPoP::Error>,
     > {
         let pkce = Pkce::generate_s256_pair().context(RandSnafu)?;
@@ -162,9 +169,12 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
             add_payload_to_url(self.authorization_endpoint.clone(), payload).context(UrlSnafu)?
         };
 
-        Ok(CallbackState {
-            pkce_verifier: Some(pkce.verifier),
-            state: start_input.state,
+        Ok(StartResult {
+            authorization_url,
+            callback_state: CallbackState {
+                pkce_verifier: Some(pkce.verifier),
+                state: start_input.state,
+            },
         })
     }
 
@@ -243,6 +253,12 @@ impl<S: start_input_builder::IsComplete> StartInputBuilder<S> {
     pub fn build(self) -> Result<StartInput, rand::rand_core::OsError> {
         Ok(self.build_internal(generate_random_value()?))
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct StartResult {
+    pub authorization_url: Url,
+    pub callback_state: CallbackState,
 }
 
 #[derive(Debug, Snafu)]

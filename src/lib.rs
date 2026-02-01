@@ -36,7 +36,6 @@ pub mod http;
 pub mod jwk;
 pub mod jwt;
 pub mod oauth2_form;
-pub mod oidc;
 pub mod platform;
 pub mod prelude;
 pub mod secrets;

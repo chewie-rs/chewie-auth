@@ -28,16 +28,16 @@ use chewie_auth::grant::client_credentials;
 use chewie_auth::cache::{InMemoryStore, OAuthTokenCache};
 use chewie_auth::client_auth::ClientSecret;
 use chewie_auth::dpop::NoDPoP;
-use chewie_auth::oidc::discovery::OidcProviderMetadata;
+use chewie_auth::AuthorizationServerMetadata;
 use chewie_auth::secrets::{EnvVarSecret, StringEncoding};
 
-async fn example(http_client: &reqwest::Client, oidc_provider_metadata: &OidcProviderMetadata) {
+async fn example(http_client: &reqwest::Client, authorization_server_metadata: &AuthorizationServerMetadata) {
     let client_auth = ClientSecret::builder()
         .client_id("client_id")
         .client_secret(EnvVarSecret::new("CLIENT_SECRET", StringEncoding))
         .build();
 
-    let grant = client_credentials::Grant::from_oidc_provider_metadata(oidc_provider_metadata)
+    let grant = client_credentials::Grant::from_authorization_server_metadata(authorization_server_metadata)
         .client_auth(client_auth)
         .no_dpop()
         .build();

@@ -147,7 +147,7 @@ pub struct RsaPublicKey {
 }
 
 impl RsaPublicKey {
-    pub fn canonical_form(&self) -> String {
+    pub(super) fn canonical_form(&self) -> String {
         let e = URL_SAFE_NO_PAD.encode(&self.e);
         let n = URL_SAFE_NO_PAD.encode(&self.n);
 
@@ -195,7 +195,7 @@ pub struct EcPublicKey {
 }
 
 impl EcPublicKey {
-    pub fn canonical_form(&self) -> String {
+    pub(super) fn canonical_form(&self) -> String {
         let crv = &self.crv;
         let x = URL_SAFE_NO_PAD.encode(&self.x);
         let y = URL_SAFE_NO_PAD.encode(&self.y);
@@ -239,7 +239,7 @@ pub struct OkpPublicKey {
 }
 
 impl OkpPublicKey {
-    pub fn canonical_form(&self) -> String {
+    pub(super) fn canonical_form(&self) -> String {
         let crv = &self.crv;
         let x = URL_SAFE_NO_PAD.encode(&self.x);
 

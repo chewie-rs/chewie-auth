@@ -1,8 +1,8 @@
 use chewie_auth::{
-    AuthorizationServerMetadata,
     client_auth::ClientSecret,
     grant::authorization_code::{self, CompleteInput, RedirectUrl, StartInput},
     secrets::{EnvVarSecret, StringEncoding},
+    server_metadata::AuthorizationServerMetadata,
 };
 use snafu::prelude::*;
 

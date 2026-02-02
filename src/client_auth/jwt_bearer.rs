@@ -4,8 +4,8 @@ use bon::Builder;
 
 use crate::{
     client_auth::{AuthenticationParams, ClientAuthentication},
+    crypto::signer::JwsSigningKey,
     jwt::{JwsSerializationError, SimpleJwt},
-    signer::JwsSigner,
 };
 
 /// JWT Authentication (RFC 7521 / 7523 / `OpenID` Connect Core 1.0 §9)
@@ -45,7 +45,7 @@ use crate::{
 /// Benefits:
 ///  - simpler setup when a shared secret is acceptable
 #[derive(Debug, Clone, Builder)]
-pub struct JwtBearer<Sgn: JwsSigner> {
+pub struct JwtBearer<Sgn: JwsSigningKey> {
     /// The signer of the JWT.
     signer: Sgn,
     /// The `OAuth2` client ID.
@@ -59,7 +59,7 @@ pub struct JwtBearer<Sgn: JwsSigner> {
     expires_after: Duration,
 }
 
-impl<Sgn: JwsSigner> ClientAuthentication for JwtBearer<Sgn> {
+impl<Sgn: JwsSigningKey> ClientAuthentication for JwtBearer<Sgn> {
     type Error = JwsSerializationError<Sgn::Error>;
 
     fn client_id(&self) -> &str {

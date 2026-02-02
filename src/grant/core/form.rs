@@ -12,7 +12,6 @@ use crate::{
     client_auth::AuthenticationParams,
     dpop::{AuthorizationServerDPoP, NoDPoP},
     http::{HttpClient, HttpResponse},
-    oauth2_form::oauth2_form_request_builder::SetDpop,
 };
 
 #[derive(Debug, Builder)]
@@ -22,18 +21,6 @@ pub struct OAuth2FormRequest<'a, F: Serialize, D: AuthorizationServerDPoP = NoDP
     form: &'a F,
     auth_params: AuthenticationParams,
     dpop: &'a D,
-}
-
-impl<'a, F: Serialize, S: oauth2_form_request_builder::State>
-    OAuth2FormRequestBuilder<'a, F, NoDPoP, S>
-{
-    pub fn no_dpop(self) -> OAuth2FormRequestBuilder<'a, F, NoDPoP, SetDpop<S>>
-    where
-        S::Dpop: oauth2_form_request_builder::IsUnset,
-    {
-        static NO_DPOP: NoDPoP = NoDPoP;
-        self.dpop(&NO_DPOP)
-    }
 }
 
 impl<F: Serialize, D: AuthorizationServerDPoP> OAuth2FormRequest<'_, F, D> {

@@ -3,7 +3,6 @@ use serde::Serialize;
 use url::Url;
 
 use crate::{
-    AuthorizationServerMetadata,
     client_auth::ClientAuthentication,
     dpop::{AuthorizationServerDPoP, NoDPoP},
     grant::{
@@ -16,6 +15,7 @@ use crate::{
         },
         refresh,
     },
+    server_metadata::AuthorizationServerMetadata,
 };
 
 /// The authorization code grant.
@@ -25,7 +25,7 @@ use crate::{
 /// ## Simple flow example (public `OAuth2` client, no `DPoP`).
 ///
 /// ```rust
-/// # async fn test(client: reqwest::Client, authorization_server_metadata: &chewie_auth::AuthorizationServerMetadata) {
+/// # async fn test(client: reqwest::Client, authorization_server_metadata: &chewie_auth::server_metadata::AuthorizationServerMetadata) {
 /// use chewie_auth::prelude::*;
 /// use chewie_auth::grant::TokenResponse;
 /// use chewie_auth::grant::authorization_code;

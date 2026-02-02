@@ -10,10 +10,10 @@ use crate::{
     dpop::AuthorizationServerDPoP,
     grant::{
         ExchangeGrant, OAuth2ExchangeGrant, OAuth2ExchangeGrantError, TokenResponse,
+        core::form::{HandleResponseError, OAuth2ErrorBody, OAuth2FormError, OAuth2FormRequest},
         device_authorization::Grant,
     },
     http::{HttpClient, HttpResponse},
-    oauth2_form::{HandleResponseError, OAuth2ErrorBody, OAuth2FormError, OAuth2FormRequest},
 };
 
 fn mk_scopes(scopes: impl IntoIterator<Item = String>, separator: &str) -> Option<String> {

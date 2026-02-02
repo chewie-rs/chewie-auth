@@ -1,4 +1,4 @@
-//! Cryptographic signing traits.
+//! Cryptographic signing key traits.
 
 mod error;
 #[cfg(feature = "crypto-native")]
@@ -8,4 +8,4 @@ mod r#trait;
 pub mod webcrypto;
 
 pub use error::JwsSignerError;
-pub use r#trait::{BoxedJwsSigner, HasPublicKey, JwsSigner, KeyMetadata};
+pub use r#trait::{BoxedJwsSigningKey, HasPublicKey, JwsSigningKey, SigningKeyMetadata};

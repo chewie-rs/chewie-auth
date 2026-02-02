@@ -1,3 +1,5 @@
+pub mod form;
+
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use bon::Builder;
@@ -11,9 +13,11 @@ use crate::{
     AccessToken,
     client_auth::ClientAuthentication,
     dpop::AuthorizationServerDPoP,
-    grant::refresh,
+    grant::{
+        core::form::{OAuth2FormError, OAuth2FormRequest},
+        refresh,
+    },
     http::{HttpClient, HttpResponse},
-    oauth2_form::OAuth2FormError,
     platform::{MaybeSend, MaybeSendSync},
     token::{IdToken, RefreshToken},
 };
@@ -170,7 +174,7 @@ impl<A: OAuth2ExchangeGrant> ExchangeGrant for A {
 
         let form = self.build_form(params);
 
-        let token_response = crate::oauth2_form::OAuth2FormRequest::builder()
+        let token_response = OAuth2FormRequest::builder()
             .auth_params(auth_params)
             .dpop(self.dpop())
             .form(&form)

@@ -29,23 +29,21 @@ The design stands on a few central ideas:
 pub mod authorizer;
 pub mod cache;
 pub mod client_auth;
+pub mod crypto;
 pub mod dpop;
 mod error;
 pub mod grant;
 pub mod http;
 pub mod jwk;
 pub mod jwt;
-pub mod oauth2_form;
 pub mod platform;
 pub mod prelude;
 pub mod secrets;
-mod server_metadata;
-pub mod signer;
-pub mod token;
+pub mod server_metadata;
+mod token;
 
 pub use error::{BoxedError, Error};
-pub use server_metadata::AuthorizationServerMetadata;
-pub use token::{AccessToken, RefreshToken};
+pub use token::{AccessToken, IdToken, RefreshToken};
 
 /// Documentation
 pub mod _documentation {
@@ -55,7 +53,7 @@ pub mod _documentation {
     pub mod changelog {}
 }
 
-/// Re-exports
+/// Re-export of parts of the `secrecy` crate.
 pub mod secrecy {
     pub use ::secrecy::{ExposeSecret, SecretBox, SecretString};
 }

@@ -1,6 +1,6 @@
 use snafu::Snafu;
 
-/// The error type returned by signing operations.
+/// The error type returned by signing key operations.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(super)))]
 pub enum JwsSignerError<E: crate::Error + 'static> {

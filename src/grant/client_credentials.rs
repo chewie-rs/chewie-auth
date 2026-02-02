@@ -5,7 +5,6 @@ use serde::Serialize;
 use url::Url;
 
 use crate::{
-    AuthorizationServerMetadata,
     client_auth::ClientAuthentication,
     dpop::{AuthorizationServerDPoP, NoDPoP},
     grant::{
@@ -15,6 +14,7 @@ use crate::{
         core::OAuth2ExchangeGrant,
         refresh,
     },
+    server_metadata::AuthorizationServerMetadata,
 };
 
 /// Client credentials grant.

@@ -1,4 +1,4 @@
-//! Cryptographic signing traits.
+//! Signing key traits.
 
 use std::borrow::Cow;
 use std::pin::Pin;
@@ -8,31 +8,31 @@ use bon::Builder;
 use bytes::Bytes;
 use snafu::prelude::*;
 
+use crate::crypto::signer::error::{MismatchedKeyMetadataSnafu, UnderlyingSnafu};
 use crate::error::BoxedError;
 use crate::jwk::PublicJwk;
 use crate::platform::{MaybeSend, MaybeSendSync};
-use crate::signer::error::{MismatchedKeyMetadataSnafu, UnderlyingSnafu};
 use crate::{Error, platform::MaybeSendFuture};
 
 /// Boxed JWS Signer.
 #[derive(Clone)]
-pub struct BoxedJwsSigner {
-    inner: Arc<dyn DynJwsSigner>,
+pub struct BoxedJwsSigningKey {
+    inner: Arc<dyn DynJwsSigningKey>,
 }
 
-impl BoxedJwsSigner {
-    /// Create a boxed signer from a non-boxed.
-    pub fn new<Sgn: JwsSigner + 'static>(signer: Sgn) -> Self {
+impl BoxedJwsSigningKey {
+    /// Create a boxed signing key from a non-boxed.
+    pub fn new<Sgn: JwsSigningKey + 'static>(signer: Sgn) -> Self {
         Self {
             inner: Arc::new(signer),
         }
     }
 }
 
-/// Boxed trait for signers that produce RFC 7515 (JWS) / RFC 7518 (JWA) compatible signatures.
-trait DynJwsSigner: MaybeSendSync {
+/// Boxed trait for signing keys that produce RFC 7515 (JWS) / RFC 7518 (JWA) compatible signatures.
+trait DynJwsSigningKey: MaybeSendSync {
     /// Returns metadata about the key used by this signer.
-    fn key_metadata(&self) -> Cow<'_, KeyMetadata>;
+    fn key_metadata(&self) -> Cow<'_, SigningKeyMetadata>;
 
     /// Asynchronously signs the given input data and returns the signature.
     ///
@@ -48,8 +48,8 @@ trait DynJwsSigner: MaybeSendSync {
     ) -> Pin<Box<dyn MaybeSendFuture<Output = Result<Bytes, BoxedError>> + 'a>>;
 }
 
-impl<Sgn: JwsSigner> DynJwsSigner for Sgn {
-    fn key_metadata(&self) -> Cow<'_, KeyMetadata> {
+impl<Sgn: JwsSigningKey> DynJwsSigningKey for Sgn {
+    fn key_metadata(&self) -> Cow<'_, SigningKeyMetadata> {
         self.key_metadata()
     }
 
@@ -65,10 +65,10 @@ impl<Sgn: JwsSigner> DynJwsSigner for Sgn {
     }
 }
 
-impl JwsSigner for BoxedJwsSigner {
+impl JwsSigningKey for BoxedJwsSigningKey {
     type Error = BoxedError;
 
-    fn key_metadata(&self) -> Cow<'_, KeyMetadata> {
+    fn key_metadata(&self) -> Cow<'_, SigningKeyMetadata> {
         self.inner.key_metadata()
     }
 
@@ -79,7 +79,7 @@ impl JwsSigner for BoxedJwsSigner {
 
 /// Key metadata.
 #[derive(Debug, Clone, Builder, PartialEq)]
-pub struct KeyMetadata {
+pub struct SigningKeyMetadata {
     /// Returns the JWS algorithm identifier.
     ///
     /// This is specifically for use in the JWT `alg` header parameter.
@@ -100,12 +100,12 @@ pub struct KeyMetadata {
 }
 
 /// Trait for signers that produce RFC 7515 (JWS) / RFC 7518 (JWA) compatible signatures.
-pub trait JwsSigner: Clone + MaybeSendSync {
+pub trait JwsSigningKey: Clone + MaybeSendSync {
     /// The error type returned by this signer's operations.
     type Error: Error + 'static;
 
     /// Returns the key metadata for this signer.
-    fn key_metadata(&self) -> Cow<'_, KeyMetadata>;
+    fn key_metadata(&self) -> Cow<'_, SigningKeyMetadata>;
 
     /// Asynchronously signs the given input data and returns the signature.
     ///
@@ -131,7 +131,7 @@ pub trait JwsSigner: Clone + MaybeSendSync {
     fn sign(
         &self,
         input: &[u8],
-        key_metadata: &KeyMetadata,
+        key_metadata: &SigningKeyMetadata,
     ) -> impl Future<Output = Result<Bytes, super::JwsSignerError<Self::Error>>> + MaybeSend {
         async move {
             if &*self.key_metadata() == key_metadata {
@@ -153,25 +153,26 @@ pub trait HasPublicKey: MaybeSendSync {
 mod tests {
     use std::{borrow::Cow, convert::Infallible};
 
-    use crate::signer::{JwsSigner, r#trait::KeyMetadata};
+    use super::*;
+    use crate::crypto::signer::JwsSignerError;
 
     #[derive(Debug, Clone)]
-    struct MockSigner {
-        key_metadata: KeyMetadata,
+    struct MockSigningKey {
+        key_metadata: SigningKeyMetadata,
     }
 
-    impl MockSigner {
+    impl MockSigningKey {
         pub fn new() -> Self {
             Self {
-                key_metadata: KeyMetadata::builder().jws_algorithm("ALG").build(),
+                key_metadata: SigningKeyMetadata::builder().jws_algorithm("ALG").build(),
             }
         }
     }
 
-    impl JwsSigner for MockSigner {
+    impl JwsSigningKey for MockSigningKey {
         type Error = Infallible;
 
-        fn key_metadata(&self) -> std::borrow::Cow<'_, super::KeyMetadata> {
+        fn key_metadata(&self) -> std::borrow::Cow<'_, SigningKeyMetadata> {
             Cow::Borrowed(&self.key_metadata)
         }
 
@@ -182,10 +183,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_metadata_no_mismatch_succeeds() {
-        MockSigner::new()
+        MockSigningKey::new()
             .sign(
                 &[],
-                &KeyMetadata {
+                &SigningKeyMetadata {
                     jws_algorithm: "ALG".into(),
                     key_id: None,
                 },
@@ -196,31 +197,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_metadata_different_alg_fails() {
-        let result = MockSigner::new()
-            .sign(&[], &KeyMetadata::builder().jws_algorithm("ALG2").build())
+        let result = MockSigningKey::new()
+            .sign(
+                &[],
+                &SigningKeyMetadata::builder().jws_algorithm("ALG2").build(),
+            )
             .await;
 
-        assert!(matches!(
-            result,
-            Err(crate::signer::JwsSignerError::MismatchedKeyMetadata)
-        ))
+        assert!(matches!(result, Err(JwsSignerError::MismatchedKeyMetadata)))
     }
 
     #[tokio::test]
     async fn test_metadata_different_kid_fails() {
-        let result = MockSigner::new()
+        let result = MockSigningKey::new()
             .sign(
                 &[],
-                &KeyMetadata::builder()
+                &SigningKeyMetadata::builder()
                     .jws_algorithm("ALG")
                     .key_id("key-id")
                     .build(),
             )
             .await;
 
-        assert!(matches!(
-            result,
-            Err(crate::signer::JwsSignerError::MismatchedKeyMetadata)
-        ))
+        assert!(matches!(result, Err(JwsSignerError::MismatchedKeyMetadata)))
     }
 }

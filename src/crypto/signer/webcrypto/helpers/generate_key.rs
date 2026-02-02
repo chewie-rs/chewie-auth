@@ -5,7 +5,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::js_sys::Object;
 use web_sys::{CryptoKeyPair, SubtleCrypto};
 
-use crate::signer::webcrypto::JsError;
+use crate::crypto::signer::webcrypto::JsError;
 
 use super::serialize::{serialize_ed25519, serialize_x25519};
 

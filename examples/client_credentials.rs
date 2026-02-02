@@ -1,12 +1,12 @@
 use chewie_auth::{
-    AuthorizationServerMetadata,
     authorizer::OAuthAuthorizer,
     cache::{InMemoryStore, OAuthTokenCache},
     client_auth::ClientSecret,
+    crypto::signer::native::Es256PrivateKey,
     dpop::DPoP,
     grant::client_credentials,
     secrets::{EnvVarSecret, StringEncoding},
-    signer::native::Es256PrivateKey,
+    server_metadata::AuthorizationServerMetadata,
 };
 use snafu::prelude::*;
 

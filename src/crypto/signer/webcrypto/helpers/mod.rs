@@ -13,7 +13,7 @@ use snafu::prelude::*;
 use wasm_bindgen::{JsValue, convert::TryFromJsValue};
 use web_sys::Crypto;
 
-use crate::signer::webcrypto::JsError;
+use crate::crypto::signer::webcrypto::JsError;
 
 #[derive(Debug, Snafu)]
 pub enum GetCryptoError {

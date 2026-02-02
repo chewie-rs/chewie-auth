@@ -1,42 +1,42 @@
 use bytes::Bytes;
-use p256::ecdsa::{Signature, SigningKey, signature::Signer};
-use p256::elliptic_curve::Generate as _;
-use p256::pkcs8::DecodePrivateKey;
+use p384::ecdsa::{Signature, SigningKey, signature::Signer};
+use p384::elliptic_curve::Generate as _;
+use p384::pkcs8::DecodePrivateKey as _;
 use secrecy::{ExposeSecret as _, SecretBox, SecretString};
 use snafu::prelude::*;
 use std::borrow::Cow;
 use std::convert::Infallible;
 use std::sync::Arc;
 
-use crate::jwk::{self, PublicJwk};
+use crate::crypto::signer::{HasPublicKey, JwsSigningKey, SigningKeyMetadata};
+use crate::jwk;
 use crate::secrets::Secret;
-use crate::signer::{HasPublicKey, JwsSigner, KeyMetadata};
 
-const ALGORITHM: &str = "ES256";
+const ALGORITHM: &str = "ES384";
 
 #[derive(Debug, Snafu)]
-pub enum Es256PrivateKeyLoadError<E: crate::Error> {
+pub enum Es384PrivateKeyLoadError<E: crate::Error> {
     Secret {
         source: E,
     },
     #[snafu(display("Failed to decode PKCS#8 key"))]
     KeyDecode {
-        source: p256::pkcs8::Error,
+        source: p384::pkcs8::Error,
     },
 }
 
 #[derive(Clone)]
-pub struct Es256PrivateKey {
+pub struct Es384PrivateKey {
     pub(super) inner: Arc<SigningKey>,
-    key_metadata: KeyMetadata,
-    jwk: PublicJwk,
+    key_metadata: SigningKeyMetadata,
+    jwk: jwk::PublicJwk,
 }
 
-impl From<SigningKey> for Es256PrivateKey {
+impl From<SigningKey> for Es384PrivateKey {
     fn from(value: SigningKey) -> Self {
         let encoded_point = value.verifying_key().to_encoded_point(false);
         let key = jwk::EcPublicKey::builder()
-            .crv("P-256")
+            .crv("P-384")
             .x(encoded_point
                 .x()
                 .expect("uncompressed point always has x coordinate")
@@ -49,8 +49,10 @@ impl From<SigningKey> for Es256PrivateKey {
 
         Self {
             inner: Arc::new(value),
-            key_metadata: KeyMetadata::builder().jws_algorithm(ALGORITHM).build(),
-            jwk: PublicJwk::builder()
+            key_metadata: SigningKeyMetadata::builder()
+                .jws_algorithm(ALGORITHM)
+                .build(),
+            jwk: jwk::PublicJwk::builder()
                 .algorithm(ALGORITHM)
                 .key_use(jwk::KeyUse::Sign)
                 .key(key)
@@ -59,15 +61,15 @@ impl From<SigningKey> for Es256PrivateKey {
     }
 }
 
-impl Es256PrivateKey {
+impl Es384PrivateKey {
     #[must_use]
     pub fn generate() -> Self {
-        p256::ecdsa::SigningKey::generate().into()
+        p384::ecdsa::SigningKey::generate().into()
     }
 
     pub async fn load_pkcs8_der<S: Secret<Output = SecretBox<[u8]>>>(
         secret: S,
-    ) -> Result<Self, Es256PrivateKeyLoadError<S::Error>> {
+    ) -> Result<Self, Es384PrivateKeyLoadError<S::Error>> {
         let der = secret.get_secret_value().await.context(SecretSnafu)?;
         let key = SigningKey::from_pkcs8_der(der.expose_secret()).context(KeyDecodeSnafu)?;
         Ok(key.into())
@@ -75,17 +77,17 @@ impl Es256PrivateKey {
 
     pub async fn load_pkcs8_pem<S: Secret<Output = SecretString>>(
         secret: S,
-    ) -> Result<Self, Es256PrivateKeyLoadError<S::Error>> {
+    ) -> Result<Self, Es384PrivateKeyLoadError<S::Error>> {
         let pem = secret.get_secret_value().await.context(SecretSnafu)?;
         let key = SigningKey::from_pkcs8_pem(pem.expose_secret()).context(KeyDecodeSnafu)?;
         Ok(key.into())
     }
 }
 
-impl JwsSigner for Es256PrivateKey {
+impl JwsSigningKey for Es384PrivateKey {
     type Error = Infallible;
 
-    fn key_metadata(&self) -> Cow<'_, KeyMetadata> {
+    fn key_metadata(&self) -> Cow<'_, SigningKeyMetadata> {
         Cow::Borrowed(&self.key_metadata)
     }
 
@@ -95,7 +97,7 @@ impl JwsSigner for Es256PrivateKey {
     }
 }
 
-impl HasPublicKey for Es256PrivateKey {
+impl HasPublicKey for Es384PrivateKey {
     fn public_key_jwk(&self) -> &jwk::PublicJwk {
         &self.jwk
     }

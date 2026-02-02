@@ -8,9 +8,9 @@ use std::borrow::Cow;
 use std::convert::Infallible;
 use std::sync::Arc;
 
+use crate::crypto::signer::{HasPublicKey, JwsSigningKey, SigningKeyMetadata};
 use crate::jwk;
 use crate::secrets::Secret;
-use crate::signer::{HasPublicKey, JwsSigner, KeyMetadata};
 
 const ALGORITHM: &str = "ES512";
 
@@ -33,7 +33,7 @@ pub enum Es512PrivateKeyLoadError<E: crate::Error> {
 #[derive(Clone)]
 pub struct Es512PrivateKey {
     pub(super) inner: Arc<SigningKey>,
-    key_metadata: KeyMetadata,
+    key_metadata: SigningKeyMetadata,
     jwk: jwk::PublicJwk,
 }
 
@@ -55,7 +55,9 @@ impl From<SigningKey> for Es512PrivateKey {
 
         Self {
             inner: Arc::new(value),
-            key_metadata: KeyMetadata::builder().jws_algorithm(ALGORITHM).build(),
+            key_metadata: SigningKeyMetadata::builder()
+                .jws_algorithm(ALGORITHM)
+                .build(),
             jwk: jwk::PublicJwk::builder()
                 .algorithm(ALGORITHM)
                 .key_use(jwk::KeyUse::Sign)
@@ -88,10 +90,10 @@ impl Es512PrivateKey {
     }
 }
 
-impl JwsSigner for Es512PrivateKey {
+impl JwsSigningKey for Es512PrivateKey {
     type Error = Infallible;
 
-    fn key_metadata(&self) -> Cow<'_, KeyMetadata> {
+    fn key_metadata(&self) -> Cow<'_, SigningKeyMetadata> {
         Cow::Borrowed(&self.key_metadata)
     }
 

@@ -28,7 +28,7 @@ use chewie_auth::grant::client_credentials;
 use chewie_auth::cache::{InMemoryStore, OAuthTokenCache};
 use chewie_auth::client_auth::ClientSecret;
 use chewie_auth::dpop::NoDPoP;
-use chewie_auth::AuthorizationServerMetadata;
+use chewie_auth::server_metadata::AuthorizationServerMetadata;
 use chewie_auth::secrets::{EnvVarSecret, StringEncoding};
 
 async fn example(http_client: &reqwest::Client, authorization_server_metadata: &AuthorizationServerMetadata) {

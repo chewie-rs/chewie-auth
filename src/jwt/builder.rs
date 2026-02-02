@@ -8,8 +8,8 @@ use snafu::prelude::*;
 use uuid::Uuid;
 
 use crate::{
+    crypto::signer::{JwsSignerError, JwsSigningKey},
     jwt::structure::{JwtClaims, JwtHeader},
-    signer::{JwsSigner, JwsSignerError},
 };
 
 /// A built JWT with all information except signing metadata.
@@ -141,7 +141,7 @@ where
     ExtraHeaders: Serialize + Clone,
     ExtraClaims: Serialize + Clone,
 {
-    async fn attempt_to_jws_compact<Sgn: JwsSigner>(
+    async fn attempt_to_jws_compact<Sgn: JwsSigningKey>(
         &self,
         signer: &Sgn,
     ) -> Result<SecretString, JwsSerializationError<Sgn::Error>> {
@@ -186,14 +186,14 @@ where
     /// # Errors
     ///
     /// Returns an error if the JWT could not be serialized to JSON, or signing failed.
-    pub async fn to_jws_compact<Sgn: JwsSigner>(
+    pub async fn to_jws_compact<Sgn: JwsSigningKey>(
         &self,
         signer: &Sgn,
     ) -> Result<SecretString, JwsSerializationError<Sgn::Error>> {
         match self.attempt_to_jws_compact(signer).await {
             Ok(jws) => Ok(jws),
             Err(JwsSerializationError::Sign {
-                source: super::super::signer::JwsSignerError::MismatchedKeyMetadata,
+                source: JwsSignerError::MismatchedKeyMetadata,
             }) => self.attempt_to_jws_compact(signer).await,
             other => other,
         }

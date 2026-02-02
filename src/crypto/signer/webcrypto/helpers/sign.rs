@@ -6,7 +6,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{CryptoKey, SubtleCrypto};
 
-use crate::signer::webcrypto::JsError;
+use crate::crypto::signer::webcrypto::JsError;
 
 use super::serialize::{serialize_ed25519, serialize_hmac, serialize_rsa_pkcs1};
 

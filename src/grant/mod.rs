@@ -1,4 +1,9 @@
-//! Grants
+//! `OAuth2` Grants.
+//!
+//! - Authorization Code
+//! - Client Credentials
+//! - Device Authorization
+//! - Refresh
 
 pub mod authorization_code;
 pub mod client_credentials;

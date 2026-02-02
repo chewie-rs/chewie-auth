@@ -6,7 +6,6 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 use crate::{
-    AuthorizationServerMetadata,
     client_auth::ClientAuthentication,
     dpop::{AuthorizationServerDPoP, NoDPoP},
     grant::{
@@ -26,6 +25,7 @@ use crate::{
         },
     },
     http::{HttpClient, HttpResponse},
+    server_metadata::AuthorizationServerMetadata,
 };
 
 fn mk_scopes(scopes: impl IntoIterator<Item = String>, separator: &str) -> Option<String> {
@@ -48,7 +48,7 @@ fn mk_scopes(scopes: impl IntoIterator<Item = String>, separator: &str) -> Optio
 /// ## Simple flow example (public `OAuth2` client, no `DPoP`).
 ///
 /// ```rust, no_run
-/// use chewie_auth::AuthorizationServerMetadata;
+/// use chewie_auth::server_metadata::AuthorizationServerMetadata;
 /// use chewie_auth::grant::authorization_code;
 /// use chewie_auth::client_auth::ClientIdOnly;
 /// use chewie_auth::dpop::NoDPoP;
@@ -96,6 +96,7 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
     Flow<Auth, DPoP>
 {
     /// Configure the flow from authorization server metadata.
+    #[must_use]
     pub fn from_authorization_server_metadata(
         oidc_metadata: &AuthorizationServerMetadata,
     ) -> Option<
@@ -123,6 +124,10 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
                     oidc_metadata.authorization_response_iss_parameter_supported,
                 ),
         )
+    }
+
+    pub async fn run_to_completion<C: HttpClient>(&self, http_client: &C, start_input: StartInput) {
+        let start_result = self.start(http_client, start_input).await.unwrap();
     }
 
     pub async fn start<C: HttpClient>(
@@ -320,9 +325,11 @@ mod par {
     use crate::{
         client_auth::AuthenticationParams,
         dpop::AuthorizationServerDPoP,
-        grant::authorization_code::flow::AuthorizationPayload,
+        grant::{
+            authorization_code::flow::AuthorizationPayload,
+            core::form::{OAuth2FormError, OAuth2FormRequest},
+        },
         http::{HttpClient, HttpResponse},
-        oauth2_form::{OAuth2FormError, OAuth2FormRequest},
     };
 
     #[derive(Debug, Serialize)]

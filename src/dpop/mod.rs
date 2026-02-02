@@ -12,9 +12,9 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{
     AccessToken,
+    crypto::signer::{HasPublicKey, JwsSigningKey},
     jwt::{JwsSerializationError, Jwt},
     platform::{MaybeSend, MaybeSendSync},
-    signer::{HasPublicKey, JwsSigner},
 };
 
 /// Proof implementation for `DPoP`.
@@ -102,7 +102,7 @@ type Origin = (Option<Scheme>, Option<String>, Option<u16>);
 
 /// This respresents a grant with the ability to create DPoP-bound tokens and sign requests with them.
 #[derive(Debug, Clone, Builder)]
-pub struct DPoP<Sgn: JwsSigner + HasPublicKey> {
+pub struct DPoP<Sgn: JwsSigningKey + HasPublicKey> {
     signer: Sgn,
     #[builder(skip = signer.public_key_jwk().thumbprint())]
     jwk_thumbprint: Option<String>,
@@ -110,8 +110,8 @@ pub struct DPoP<Sgn: JwsSigner + HasPublicKey> {
     nonce: Arc<Mutex<Option<Arc<String>>>>,
 }
 
-impl<Sgn: JwsSigner + HasPublicKey> AuthorizationServerDPoP for DPoP<Sgn> {
-    type Error = JwsSerializationError<<Sgn as JwsSigner>::Error>;
+impl<Sgn: JwsSigningKey + HasPublicKey> AuthorizationServerDPoP for DPoP<Sgn> {
+    type Error = JwsSerializationError<<Sgn as JwsSigningKey>::Error>;
     type ResourceServerDPoP = ResourceDPoP<Sgn>;
 
     fn jwk_thumbprint(&self) -> Option<&str> {
@@ -134,14 +134,14 @@ impl<Sgn: JwsSigner + HasPublicKey> AuthorizationServerDPoP for DPoP<Sgn> {
 
 /// This respresents the ability to create proofs for resource servers from DPoP-bound access tokens.
 #[derive(Debug, Clone, Builder)]
-pub struct ResourceDPoP<Sgn: JwsSigner + HasPublicKey> {
+pub struct ResourceDPoP<Sgn: JwsSigningKey + HasPublicKey> {
     signer: Sgn,
     #[builder(default)]
     nonces: Arc<RwLock<HashMap<Origin, Arc<String>>>>,
 }
 
-impl<Sgn: JwsSigner + HasPublicKey> ResourceServerDPoP for ResourceDPoP<Sgn> {
-    type Error = JwsSerializationError<<Sgn as JwsSigner>::Error>;
+impl<Sgn: JwsSigningKey + HasPublicKey> ResourceServerDPoP for ResourceDPoP<Sgn> {
+    type Error = JwsSerializationError<<Sgn as JwsSigningKey>::Error>;
 
     fn update_nonce(&self, uri: &Uri, nonce: String) {
         let origin = origin_from_uri(uri);
@@ -168,13 +168,13 @@ fn origin_from_uri(uri: &Uri) -> Origin {
     )
 }
 
-async fn sign_proof<Sgn: JwsSigner + HasPublicKey>(
+async fn sign_proof<Sgn: JwsSigningKey + HasPublicKey>(
     signer: &Sgn,
     htm: &Method,
     htu: &Uri,
     access_token: Option<&AccessToken>,
     nonce: Option<Arc<String>>,
-) -> Result<Option<SecretString>, JwsSerializationError<<Sgn as JwsSigner>::Error>> {
+) -> Result<Option<SecretString>, JwsSerializationError<<Sgn as JwsSigningKey>::Error>> {
     #[derive(Debug, Clone, Serialize)]
     struct DPoPHeaders {
         jwk: serde_json::Value,

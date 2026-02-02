@@ -149,7 +149,7 @@ fn append_openid_config(issuer: &str, uri_suffix: &str) -> Result<Uri, http::Err
 
 #[cfg(test)]
 mod tests {
-    use crate::AuthorizationServerMetadata;
+    use super::*;
 
     /// Test the document from OIDC Discovery §4.2.
     #[test]

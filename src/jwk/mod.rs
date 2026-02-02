@@ -5,6 +5,7 @@
 //! Some values here are sourced from the above RFCs, also with reference to
 //! <https://www.iana.org/assignments/jose/jose.xhtml>.
 
+mod jwks;
 mod serde_utils;
 
 use crate::jwk::serde_utils::{base64url, base64url_uint};
@@ -50,6 +51,7 @@ pub struct PublicJwk {
 }
 
 impl PublicJwk {
+    #[must_use] 
     pub fn thumbprint(&self) -> Option<String> {
         let canonical_form = match &self.key {
             PublicKey::Rsa(rsa_public_key) => Some(rsa_public_key.canonical_form()),

@@ -9,9 +9,13 @@ use std::sync::Arc;
 use wasm_bindgen::JsValue;
 use web_sys::{CryptoKey, SubtleCrypto};
 
-use crate::jwk;
-use crate::signer::webcrypto::helpers::{GetCryptoError, get_crypto};
-use crate::signer::{HasPublicKey, JwsSigner, KeyMetadata};
+use crate::{
+    crypto::signer::{
+        HasPublicKey, JwsSigningKey, SigningKeyMetadata,
+        webcrypto::helpers::{GetCryptoError, get_crypto},
+    },
+    jwk,
+};
 use helpers::{
     AsymmetricKeyGenParams, KeyUsage, generate_asymmetric_key, get_public_jwk, sign_with_key,
 };
@@ -32,7 +36,7 @@ impl JsError {
 pub struct EcDsaPrivateKey {
     pub(super) inner: Arc<CryptoKey>,
     algorithm: JwsAlgorithm,
-    key_metadata: KeyMetadata,
+    key_metadata: SigningKeyMetadata,
     jwk: jwk::PublicJwk,
 }
 
@@ -97,7 +101,7 @@ impl EcDsaPrivateKey {
         Ok(Self {
             inner: Arc::new(key_pair.get_private_key()),
             algorithm,
-            key_metadata: KeyMetadata {
+            key_metadata: SigningKeyMetadata {
                 jws_algorithm: algorithm.name().to_string(),
                 key_id: public_key_jwk.kid.clone(),
             },
@@ -118,10 +122,10 @@ impl crate::Error for SignError {
     }
 }
 
-impl JwsSigner for EcDsaPrivateKey {
+impl JwsSigningKey for EcDsaPrivateKey {
     type Error = SignError;
 
-    fn key_metadata(&self) -> Cow<'_, KeyMetadata> {
+    fn key_metadata(&self) -> Cow<'_, SigningKeyMetadata> {
         Cow::Borrowed(&self.key_metadata)
     }
 

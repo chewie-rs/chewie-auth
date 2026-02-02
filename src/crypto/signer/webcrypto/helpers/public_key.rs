@@ -3,7 +3,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{CryptoKey, SubtleCrypto};
 
-use crate::{jwk::PublicJwk, signer::webcrypto::JsError};
+use crate::{crypto::signer::webcrypto::JsError, jwk::PublicJwk};
 
 #[derive(Debug, Snafu)]
 pub enum GetPublicJwkError {

@@ -7,11 +7,8 @@ use crate::{
     dpop::{AuthorizationServerDPoP, NoDPoP},
     grant::{
         OAuth2ExchangeGrant,
-        authorization_code::{
-            RedirectUrl,
-            grant::grant_config_builder::{
-                SetDpop, SetTokenEndpoint, SetTokenEndpointAuthMethodsSupported,
-            },
+        authorization_code::grant::grant_config_builder::{
+            SetDpop, SetTokenEndpoint, SetTokenEndpointAuthMethodsSupported,
         },
         refresh,
     },
@@ -80,9 +77,11 @@ pub struct GrantConfig<Auth: ClientAuthentication, DPoP: AuthorizationServerDPoP
     pub(super) token_endpoint: Url,
 
     /// The redirect URL registered with the authorization server.
-    pub(super) redirect_url: RedirectUrl,
+    #[builder(into)]
+    pub(super) redirect_uri: String,
 
     /// Supported endpoint auth methods; used to auto-select basic or form auth for client secrets.
+    #[builder(into)]
     pub(super) token_endpoint_auth_methods_supported: Option<Vec<String>>,
 }
 
@@ -126,7 +125,7 @@ pub struct Parameters {
 pub struct AuthorizationCodeForm<'a> {
     grant_type: &'static str,
     code: String,
-    redirect_uri: &'a RedirectUrl,
+    redirect_uri: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     code_verifier: Option<String>,
 }
@@ -155,7 +154,7 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
         Self::Form {
             grant_type: "authorization_code",
             code: params.code,
-            redirect_uri: &self.config.redirect_url,
+            redirect_uri: &self.config.redirect_uri,
             code_verifier: params.pkce_verifier,
         }
     }

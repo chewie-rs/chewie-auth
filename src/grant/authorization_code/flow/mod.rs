@@ -1,3 +1,10 @@
+#[cfg(feature = "authorization-flow-loopback")]
+mod loopback;
+mod par;
+
+#[cfg(feature = "authorization-flow-loopback")]
+pub use loopback::{LoopbackError, bind_loopback};
+
 use bon::Builder;
 use rand::TryRngCore;
 use serde::{Deserialize, Serialize};
@@ -57,7 +64,7 @@ fn mk_scopes(scopes: impl IntoIterator<Item = String>, separator: &str) -> Optio
 ///
 /// let grant: authorization_code::Grant<ClientIdOnly> =
 ///     authorization_code::Grant::from_authorization_server_metadata(&authorization_server_metadata)
-///         .redirect_url("https://redirect_url".parse().unwrap())
+///         .redirect_uri("https://redirect_url")
 ///         .client_auth(ClientIdOnly::new("client_id"))
 ///         .dpop(NoDPoP)
 ///         .build();
@@ -126,8 +133,21 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
         )
     }
 
-    pub async fn run_to_completion<C: HttpClient>(&self, http_client: &C, start_input: StartInput) {
-        let start_result = self.start(http_client, start_input).await.unwrap();
+    #[cfg(feature = "authorization-flow-loopback")]
+    pub async fn complete_on_loopback<C: HttpClient>(
+        &self,
+        http_client: &C,
+        listener: &tokio::net::TcpListener,
+        callback_state: &CallbackState,
+    ) -> Result<
+        TokenResponse,
+        LoopbackError<CompleteError<<Grant<Auth, DPoP> as ExchangeGrant>::Error<C>>>,
+    > {
+        loopback::complete_on_loopback(listener, callback_state, async |complete_input| {
+            self.complete(http_client, callback_state, complete_input)
+                .await
+        })
+        .await
     }
 
     pub async fn start<C: HttpClient>(
@@ -171,12 +191,18 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
             add_payload_to_url(self.authorization_endpoint.clone(), push_payload)
                 .context(UrlSnafu)?
         } else {
-            add_payload_to_url(self.authorization_endpoint.clone(), payload).context(UrlSnafu)?
+            let mut url = add_payload_to_url(self.authorization_endpoint.clone(), payload)
+                .context(UrlSnafu)?;
+            // PAR payload does not include client ID, but direct call rquires it.
+            url.query_pairs_mut()
+                .append_pair("client_id", self.grant.config.client_auth.client_id());
+            url
         };
 
         Ok(StartResult {
             authorization_url,
             callback_state: CallbackState {
+                redirect_uri: self.grant.config.redirect_uri.clone(),
                 pkce_verifier: Some(pkce.verifier),
                 state: start_input.state,
             },
@@ -226,7 +252,7 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
             .exchange(
                 http_client,
                 Parameters {
-                    code: complete_input.code,
+                    code: complete_input.code.to_string(),
                     pkce_verifier: callback_state.pkce_verifier.clone(),
                 },
             )
@@ -243,6 +269,17 @@ pub enum CompleteError<GrantErr: crate::Error + 'static> {
     IssuerMismatch { original: String, callback: String },
     StateMismatch { original: String, callback: String },
     MissingIssuer,
+}
+
+impl<GrantErr: crate::Error + 'static> crate::Error for CompleteError<GrantErr> {
+    fn is_retryable(&self) -> bool {
+        match self {
+            CompleteError::Grant { source } => source.is_retryable(),
+            CompleteError::IssuerMismatch { .. } => false,
+            CompleteError::StateMismatch { .. } => false,
+            CompleteError::MissingIssuer => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Builder)]
@@ -299,6 +336,7 @@ pub struct CompleteInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallbackState {
+    pub redirect_uri: String,
     pub pkce_verifier: Option<String>,
     pub state: String,
 }
@@ -316,73 +354,6 @@ struct AuthorizationPayload<'a> {
     dpop_jkt: Option<&'a str>,
 }
 
-mod par {
-    use http::uri::InvalidUri;
-    use serde::{Deserialize, Serialize};
-    use snafu::{ResultExt as _, Snafu};
-    use url::Url;
-
-    use crate::{
-        client_auth::AuthenticationParams,
-        dpop::AuthorizationServerDPoP,
-        grant::{
-            authorization_code::flow::AuthorizationPayload,
-            core::form::{OAuth2FormError, OAuth2FormRequest},
-        },
-        http::{HttpClient, HttpResponse},
-    };
-
-    #[derive(Debug, Serialize)]
-    pub(super) struct AuthorizationPushPayload<'a> {
-        pub client_id: &'a str,
-        pub request_uri: &'a str,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub(super) struct AuthorizationPushResponse {
-        pub request_uri: String,
-        pub expires_in: u64,
-    }
-
-    pub(super) async fn make_par_call<C: HttpClient, D: AuthorizationServerDPoP>(
-        http_client: &C,
-        par_url: Url,
-        auth_params: AuthenticationParams,
-        payload: AuthorizationPayload<'_>,
-        dpop: D,
-    ) -> Result<
-        AuthorizationPushResponse,
-        ParError<C::Error, <C::Response as HttpResponse>::Error, D::Error>,
-    > {
-        OAuth2FormRequest::builder()
-            .form(&payload)
-            .auth_params(auth_params)
-            .uri(par_url.as_str().parse().context(UrlSnafu)?)
-            .dpop(&dpop)
-            .build()
-            .execute(http_client)
-            .await
-            .context(FormSnafu)
-    }
-
-    #[derive(Debug, Snafu)]
-    pub enum ParError<
-        HttpErr: crate::Error + 'static,
-        HttpRespErr: crate::Error + 'static,
-        DPoPErr: crate::Error + 'static,
-    > {
-        Form {
-            source: OAuth2FormError<HttpErr, HttpRespErr, DPoPErr>,
-        },
-        Url {
-            source: InvalidUri,
-        },
-        DPoP {
-            source: DPoPErr,
-        },
-    }
-}
-
 fn build_authorization_payload<
     'a,
     Auth: ClientAuthentication + 'static,
@@ -394,7 +365,7 @@ fn build_authorization_payload<
 ) -> AuthorizationPayload<'a> {
     AuthorizationPayload {
         response_type: "code",
-        redirect_uri: flow.grant.config.redirect_url.as_str(),
+        redirect_uri: &flow.grant.config.redirect_uri,
         scope: start_input.scopes.as_deref(),
         state: &start_input.state,
         code_challenge: &pkce.challenge,

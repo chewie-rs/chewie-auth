@@ -1,7 +1,7 @@
 use chewie_auth::{
     authorizer::OAuthAuthorizer,
     cache::{InMemoryStore, OAuthTokenCache},
-    client_auth::ClientSecret,
+    client_auth::{ClientSecret, JwtBearer},
     crypto::signer::native::Es256PrivateKey,
     dpop::DPoP,
     grant::client_credentials,
@@ -10,6 +10,7 @@ use chewie_auth::{
 };
 use snafu::prelude::*;
 
+#[snafu::report]
 #[tokio::main]
 pub async fn main() -> Result<(), snafu::Whatever> {
     let http_client = reqwest::Client::new();
@@ -29,6 +30,18 @@ pub async fn main() -> Result<(), snafu::Whatever> {
         ClientSecret::builder()
             .client_id(std::env::var("CLIENT_ID").whatever_context("Failed to get CLIENT_ID")?)
             .client_secret(EnvVarSecret::new("CLIENT_SECRET", StringEncoding))
+            .build(),
+    )
+    .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())
+    .build();
+
+    let grant = client_credentials::Grant::from_authorization_server_metadata(
+        &authorization_server_metadata,
+    )
+    .client_auth(
+        JwtBearer::builder()
+            .client_id(std::env::var("CLIENT_ID").whatever_context("Failed to get CLIENT_ID")?)
+            .signer(google_kms_key)
             .build(),
     )
     .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())

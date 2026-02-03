@@ -80,10 +80,12 @@ impl AuthorizationServerMetadata {
     pub async fn from_issuer<C: HttpClient>(
         #[builder(start_fn, into)] issuer: &str,
         #[builder(finish_fn)] http_client: &C,
-        #[builder(into, default = "openid-configuration")] suffix: &str,
+        #[builder(into, default = "/.well-known/oauth-authorization-server")] well_known_path: &str,
+        #[builder(default = false)] use_legacy_transformation: bool,
     ) -> Result<Self, OidcProviderFetchError<C::Error, <C::Response as HttpResponse>::Error>> {
         let configuration_endpoint =
-            append_openid_config(issuer, suffix).context(BadIssuerSnafu)?;
+            add_issuer_to_known_path(issuer, well_known_path, use_legacy_transformation)
+                .context(BadIssuerSnafu)?;
         let request = http::Request::get(configuration_endpoint)
             .body(Bytes::new())
             .context(InvalidBodySnafu)?;
@@ -136,12 +138,19 @@ pub enum OidcProviderFetchError<
     },
 }
 
-fn append_openid_config(issuer: &str, uri_suffix: &str) -> Result<Uri, http::Error> {
-    let issuer_as_uri = issuer.parse::<Uri>()?;
-
+fn add_issuer_to_known_path(
+    issuer: &str,
+    uri_suffix: &str,
+    use_legacy_transformation: bool,
+) -> Result<Uri, http::Error> {
+    let issuer_as_uri = Uri::try_from(issuer)?;
     let path = issuer_as_uri.path();
     let cleaned_path = path.strip_suffix('/').unwrap_or(path);
-    let new_path = format!("{cleaned_path}/.well-known/{uri_suffix}");
+    let new_path = if use_legacy_transformation {
+        format!("{uri_suffix}{cleaned_path}")
+    } else {
+        format!("{cleaned_path}{uri_suffix}")
+    };
     let mut parts = issuer_as_uri.into_parts();
     parts.path_and_query = Some(new_path.try_into()?);
     Ok(Uri::from_parts(parts)?)

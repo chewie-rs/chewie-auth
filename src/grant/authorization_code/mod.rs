@@ -3,8 +3,8 @@
 mod flow;
 mod grant;
 pub mod pkce;
-mod redirect_url;
 
-pub use flow::{CallbackState, CompleteInput, Flow, StartInput};
+pub use flow::{CallbackState, CompleteError, CompleteInput, Flow, StartError, StartInput};
+#[cfg(feature = "authorization-flow-loopback")]
+pub use flow::{LoopbackError, bind_loopback};
 pub use grant::{Grant, GrantConfig, GrantConfigBuilder, Parameters};
-pub use redirect_url::RedirectUrl;

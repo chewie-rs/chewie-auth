@@ -88,7 +88,7 @@ pub struct SigningKeyMetadata {
     /// in RFC 9864. It is the responsibility of the caller to map this to a
     /// polymorphic algorithm when needed.
     #[builder(into)]
-    pub(crate) jws_algorithm: String,
+    pub jws_algorithm: String,
     /// Returns the key ID of the signer.
     ///
     /// This is specifically for use in the JWT `kid` header parameter.
@@ -96,7 +96,7 @@ pub struct SigningKeyMetadata {
     /// Note: The "natural" key ID is not always directly suitable as a
     /// `kid` value, and may require transformation before use.
     #[builder(into)]
-    pub(crate) key_id: Option<String>,
+    pub key_id: Option<String>,
 }
 
 /// Trait for signers that produce RFC 7515 (JWS) / RFC 7518 (JWA) compatible signatures.

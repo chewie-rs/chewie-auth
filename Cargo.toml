@@ -57,7 +57,7 @@ web-time = { version = "1", features = ["serde"] }
 js-sys = "0.3"
 gloo-timers = { version = "0.3", features = ["futures"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
-getrandom = { version = "0.4.0-rc.1", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 uuid = { version = "1", features = ["js"] }
 
 [dev-dependencies]

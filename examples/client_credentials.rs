@@ -35,18 +35,6 @@ pub async fn main() -> Result<(), snafu::Whatever> {
     .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())
     .build();
 
-    let grant = client_credentials::Grant::from_authorization_server_metadata(
-        &authorization_server_metadata,
-    )
-    .client_auth(
-        JwtBearer::builder()
-            .client_id(std::env::var("CLIENT_ID").whatever_context("Failed to get CLIENT_ID")?)
-            .signer(google_kms_key)
-            .build(),
-    )
-    .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())
-    .build();
-
     let cache = OAuthTokenCache::builder()
         .grant(grant)
         .grant_parameters(

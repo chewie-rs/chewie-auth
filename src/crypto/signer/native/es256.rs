@@ -34,7 +34,7 @@ pub struct Es256PrivateKey {
 
 impl From<SigningKey> for Es256PrivateKey {
     fn from(value: SigningKey) -> Self {
-        let encoded_point = value.verifying_key().to_encoded_point(false);
+        let encoded_point = value.verifying_key().to_sec1_point(false);
         let key = jwk::EcPublicKey::builder()
             .crv("P-256")
             .x(encoded_point

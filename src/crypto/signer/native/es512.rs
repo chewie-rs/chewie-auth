@@ -40,7 +40,7 @@ pub struct Es512PrivateKey {
 impl From<SigningKey> for Es512PrivateKey {
     fn from(value: SigningKey) -> Self {
         let verifying_key = VerifyingKey::from(&value);
-        let encoded_point = verifying_key.to_encoded_point(false);
+        let encoded_point = verifying_key.to_sec1_point(false);
         let key = jwk::EcPublicKey::builder()
             .crv("P-521")
             .x(encoded_point

@@ -9,6 +9,16 @@ pub use std::time::{Duration, Instant, SystemTime};
 #[cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))]
 pub use web_time::{Duration, Instant, SystemTime};
 
+#[cfg(not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none"))))]
+pub async fn sleep(duration: Duration) {
+    tokio::time::sleep(duration).await
+}
+
+#[cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))]
+pub async fn sleep(duration: Duration) {
+    gloo_timers::future::sleep(duration).await
+}
+
 /// Marker trait for types that may be `Send`, depending on platform.
 #[cfg(not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none"))))]
 pub trait MaybeSend: Send {}

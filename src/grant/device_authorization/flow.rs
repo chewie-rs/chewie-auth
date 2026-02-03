@@ -14,6 +14,7 @@ use crate::{
         device_authorization::Grant,
     },
     http::{HttpClient, HttpResponse},
+    platform::sleep,
 };
 
 fn mk_scopes(scopes: impl IntoIterator<Item = String>, separator: &str) -> Option<String> {
@@ -135,6 +136,27 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
                 interval_secs: response.interval,
             },
         })
+    }
+
+    pub async fn poll_to_completion<C: HttpClient>(
+        &self,
+        http_client: &C,
+        pending_state: PendingState,
+        event: impl AsyncFn(u32),
+    ) -> Result<TokenResponse, PollError<<Grant<Auth, DPoP> as ExchangeGrant>::Error<C>>> {
+        let mut pending_state = pending_state;
+
+        loop {
+            sleep(Duration::from_secs(pending_state.interval_secs.into())).await;
+
+            match self.poll(http_client, pending_state).await? {
+                PollResult::Pending(pending) => {
+                    pending_state = pending;
+                    event(pending_state.interval_secs).await;
+                }
+                PollResult::Complete(token_response) => return Ok(token_response),
+            }
+        }
     }
 
     pub async fn poll<C: HttpClient>(

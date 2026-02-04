@@ -1,7 +1,7 @@
 use chewie_auth::{
     authorizer::OAuthAuthorizer,
     cache::{InMemoryStore, OAuthTokenCache},
-    client_auth::{ClientSecret},
+    client_auth::ClientSecret,
     crypto::signer::native::Es256PrivateKey,
     dpop::DPoP,
     grant::client_credentials,
@@ -35,7 +35,7 @@ pub async fn main() -> Result<(), snafu::Whatever> {
     .dpop(DPoP::builder().signer(Es256PrivateKey::generate()).build())
     .build();
 
-    let cache = OAuthTokenCache::builder()
+    let authorizer = OAuthTokenCache::builder()
         .grant(grant)
         .grant_parameters(
             client_credentials::Parameters::builder()
@@ -43,9 +43,8 @@ pub async fn main() -> Result<(), snafu::Whatever> {
                 .build(),
         )
         .refresh_store(InMemoryStore::default())
-        .build();
-
-    let authorizer = OAuthAuthorizer::new(cache);
+        .build()
+        .into_authorizer();
 
     let uri = "https://blah/".parse().unwrap();
     let headers = authorizer

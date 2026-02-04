@@ -1,10 +1,10 @@
 use bon::Builder;
 use http::{
-    HeaderMap, Method, Uri,
+    HeaderMap, HeaderName, Method, Uri,
     header::{AUTHORIZATION, InvalidHeaderValue},
 };
 use secrecy::ExposeSecret;
-use snafu::{ResultExt as _, Snafu, ensure};
+use snafu::prelude::*;
 
 use crate::{
     cache::{GetTokenError, OAuthTokenCache, RefreshTokenStore, TokenCache},
@@ -13,24 +13,49 @@ use crate::{
     http::HttpClient,
 };
 
+/// An authorizer for OAuth2 grants.
+///
+/// This can provide appropriate headers for a request, including any
+/// required DPoP headers, refreshing tokens as necessary using the
+/// underlying OAuth2 grant.
 #[derive(Builder)]
 pub struct OAuthAuthorizer<G: OAuth2ExchangeGrant, S: RefreshTokenStore> {
     cache: OAuthTokenCache<G, S>,
+    #[builder(skip = cache.grant.dpop().to_resource_server_dpop())]
     dpop: <G::DPoP as AuthorizationServerDPoP>::ResourceServerDPoP,
+    #[builder(default = AUTHORIZATION)]
+    authorization_header: HeaderName,
 }
 
+impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> std::fmt::Debug for OAuthAuthorizer<G, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthAuthorizer")
+            .field("authorization_header", &self.authorization_header)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Errors that can occur when getting headers for a request.
 #[derive(Debug, Snafu)]
 pub enum AuthorizerError<TcErr: crate::Error + 'static, DPoPErr: crate::Error + 'static> {
+    /// The token cache returned an error when attempting to return a token.
     TokenCache {
+        /// The underlying token cache error.
         source: TcErr,
     },
+    /// An error occurred when creating the DPoP proof.
     DPoP {
+        /// The underlying DPoP error.
         source: DPoPErr,
     },
-    InvalidHeaderValue,
+    /// The token could not be used as it was not a valid token value.
+    InvalidTokenValue,
+    /// A DPoP token was received, but no DPoP configuration for the proof was present.
     #[snafu(display("Received DPoP token but no DPoP configuration present"))]
     UnexpectedDPoPToken,
+    /// The token could not be used as it was not a valid header value.
     InvalidHeader {
+        /// The underlying error.
         source: InvalidHeaderValue,
     },
 }
@@ -40,21 +65,20 @@ impl<TcErr: crate::Error + 'static, DPoPErr: crate::Error + 'static> crate::Erro
 {
     fn is_retryable(&self) -> bool {
         match self {
-            AuthorizerError::TokenCache { source } => source.is_retryable(),
-            AuthorizerError::DPoP { source } => source.is_retryable(),
-            AuthorizerError::InvalidHeaderValue => false,
-            AuthorizerError::UnexpectedDPoPToken => false,
-            AuthorizerError::InvalidHeader { .. } => false,
+            Self::TokenCache { source } => source.is_retryable(),
+            Self::DPoP { source } => source.is_retryable(),
+            Self::InvalidTokenValue | Self::UnexpectedDPoPToken | Self::InvalidHeader { .. } => {
+                false
+            }
         }
     }
 }
 
 impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> OAuthAuthorizer<G, S> {
-    pub fn new(cache: OAuthTokenCache<G, S>) -> Self {
-        let dpop = cache.grant.dpop().to_resource_server_dpop();
-        Self { cache, dpop }
-    }
-
+    /// Get the authorization headers for this request, including any necessary DPoP headers.
+    ///
+    /// The call uses the provided HTTP client for any calls that are necessary to get the
+    /// headers. The method and URI are passed to the DPoP proof when used.
     pub async fn get_headers<C: HttpClient>(
         &self,
         http_client: &C,
@@ -75,7 +99,7 @@ impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> OAuthAuthorizer<G, S> {
 
         ensure!(
             is_header_safe(token.access_token.expose_secret()),
-            InvalidHeaderValueSnafu
+            InvalidTokenValueSnafu
         );
 
         let mut headers = HeaderMap::new();
@@ -92,7 +116,7 @@ impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> OAuthAuthorizer<G, S> {
                     proof.expose_secret().parse().context(InvalidHeaderSnafu)?,
                 );
                 headers.insert(
-                    AUTHORIZATION,
+                    &self.authorization_header,
                     format!("DPoP {}", token.access_token.expose_secret())
                         .parse()
                         .context(InvalidHeaderSnafu)?,
@@ -102,7 +126,7 @@ impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> OAuthAuthorizer<G, S> {
             }
         } else {
             headers.insert(
-                AUTHORIZATION,
+                &self.authorization_header,
                 format!("Bearer {}", token.access_token.expose_secret())
                     .parse()
                     .context(InvalidHeaderSnafu)?,
@@ -117,6 +141,11 @@ fn is_header_safe(token: &str) -> bool {
     !token.is_empty() && token.bytes().all(|b| (0x20..0x7F).contains(&b))
 }
 
+/// Allows users to extract the DPoP nonce from a set of headers.
+///
+/// This is meant for use by users who are interacting with resource servers,
+/// who can then call `dpop.update_nonce(uri, nonce)` to update the
+/// bookkeeping for sending DPoP nonces.
 #[must_use]
 pub fn extract_dpop_nonce(headers: &HeaderMap) -> Option<String> {
     headers

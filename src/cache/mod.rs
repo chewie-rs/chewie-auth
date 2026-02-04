@@ -6,6 +6,7 @@ use parking_lot::RwLock;
 use snafu::{ResultExt as _, Snafu};
 
 use crate::RefreshToken;
+use crate::authorizer::OAuthAuthorizer;
 use crate::grant::{ExchangeGrant, OAuth2ExchangeGrant, TokenResponse, refresh};
 use crate::http::HttpClient;
 use crate::platform::{MaybeSend, MaybeSendSync};
@@ -145,6 +146,11 @@ impl<G: OAuth2ExchangeGrant, S: RefreshTokenStore> OAuthTokenCache<G, S> {
         } else {
             self.refresh_store.clear().await;
         }
+    }
+
+    /// Convert the cache into an authorizer with the default configuration.
+    pub fn into_authorizer(self) -> OAuthAuthorizer<G, S> {
+        OAuthAuthorizer::builder().cache(self).build()
     }
 }
 

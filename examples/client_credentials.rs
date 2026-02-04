@@ -1,7 +1,7 @@
 use chewie_auth::{
     authorizer::OAuthAuthorizer,
     cache::{InMemoryStore, OAuthTokenCache},
-    client_auth::{ClientSecret, JwtBearer},
+    client_auth::{ClientSecret},
     crypto::signer::native::Es256PrivateKey,
     dpop::DPoP,
     grant::client_credentials,

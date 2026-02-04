@@ -83,7 +83,7 @@ pub struct Flow<Auth: ClientAuthentication, DPoP: AuthorizationServerDPoP = NoDP
     authorization_endpoint: Url,
     /// The expected issuer.
     #[builder(into)]
-    pub(super) issuer: Option<String>,
+    issuer: Option<String>,
     /// The pushed authorization request endpoint (RFC 9126 §5).
     pushed_authorization_request_endpoint: Option<Url>,
     /// Set to true if the provider requires PAR requests only (RFC 9126 §5).
@@ -161,7 +161,8 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
         let pkce = Pkce::generate_s256_pair().context(RandSnafu)?;
         let payload = build_authorization_payload(self, &start_input, &pkce);
 
-        let authorization_url = if let Some(par_url) = &self.pushed_authorization_request_endpoint
+        let (authorization_url, expires_in) = if let Some(par_url) =
+            &self.pushed_authorization_request_endpoint
             && (self.prefer_pushed_authorization_requests
                 || self.require_pushed_authorization_requests)
         {
@@ -188,19 +189,22 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
                 request_uri: &par_response.request_uri,
             };
 
-            add_payload_to_url(self.authorization_endpoint.clone(), push_payload)
-                .context(UrlSnafu)?
+            (
+                add_payload_to_url(self.authorization_endpoint.clone(), push_payload)
+                    .context(UrlSnafu)?,
+                Some(par_response.expires_in),
+            )
         } else {
-            let mut url = add_payload_to_url(self.authorization_endpoint.clone(), payload)
-                .context(UrlSnafu)?;
-            // PAR payload does not include client ID, but direct call rquires it.
-            url.query_pairs_mut()
-                .append_pair("client_id", self.grant.config.client_auth.client_id());
-            url
+            (
+                add_payload_to_url(self.authorization_endpoint.clone(), payload)
+                    .context(UrlSnafu)?,
+                None,
+            )
         };
 
         Ok(StartResult {
             authorization_url,
+            expires_in,
             callback_state: CallbackState {
                 redirect_uri: self.grant.config.redirect_uri.clone(),
                 pkce_verifier: Some(pkce.verifier),
@@ -300,6 +304,7 @@ impl<S: start_input_builder::IsComplete> StartInputBuilder<S> {
 #[derive(Debug, Clone)]
 pub struct StartResult {
     pub authorization_url: Url,
+    pub expires_in: Option<u64>,
     pub callback_state: CallbackState,
 }
 
@@ -343,6 +348,7 @@ pub struct CallbackState {
 
 #[derive(Debug, Serialize)]
 struct AuthorizationPayload<'a> {
+    client_id: &'a str,
     response_type: &'static str,
     redirect_uri: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -364,6 +370,7 @@ fn build_authorization_payload<
     pkce: &'a Pkce,
 ) -> AuthorizationPayload<'a> {
     AuthorizationPayload {
+        client_id: flow.grant.config.client_auth.client_id(),
         response_type: "code",
         redirect_uri: &flow.grant.config.redirect_uri,
         scope: start_input.scopes.as_deref(),

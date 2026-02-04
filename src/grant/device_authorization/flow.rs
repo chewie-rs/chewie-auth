@@ -230,9 +230,6 @@ pub enum StartError<
     Form {
         source: OAuth2FormError<HttpErr, HttpRespErr, DPoPErr>,
     },
-    Rand {
-        source: rand::rand_core::OsError,
-    },
     ClientAuth {
         source: AuthErr,
     },

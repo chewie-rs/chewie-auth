@@ -1,5 +1,4 @@
 use chewie_auth::{
-    authorizer::OAuthAuthorizer,
     cache::{InMemoryStore, OAuthTokenCache},
     client_auth::ClientSecret,
     crypto::signer::native::Es256PrivateKey,

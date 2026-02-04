@@ -6,7 +6,7 @@ mod par;
 pub use loopback::{LoopbackError, bind_loopback};
 
 use bon::Builder;
-use rand::TryRngCore;
+use rand::TryRng as _;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use subtle::ConstantTimeEq;
@@ -158,7 +158,7 @@ impl<Auth: ClientAuthentication + 'static, DPoP: AuthorizationServerDPoP + 'stat
         StartResult,
         StartError<Auth::Error, C::Error, <C::Response as HttpResponse>::Error, DPoP::Error>,
     > {
-        let pkce = Pkce::generate_s256_pair().context(RandSnafu)?;
+        let pkce = Pkce::generate_s256_pair();
         let payload = build_authorization_payload(self, &start_input, &pkce);
 
         let (authorization_url, expires_in) = if let Some(par_url) =
@@ -296,8 +296,8 @@ pub struct StartInput {
 }
 
 impl<S: start_input_builder::IsComplete> StartInputBuilder<S> {
-    pub fn build(self) -> Result<StartInput, rand::rand_core::OsError> {
-        Ok(self.build_internal(generate_random_value()?))
+    pub fn build(self) -> StartInput {
+        self.build_internal(generate_random_value())
     }
 }
 
@@ -320,9 +320,6 @@ pub enum StartError<
     },
     Par {
         source: ParError<HttpErr, HttpRespErr, DPoPErr>,
-    },
-    Rand {
-        source: rand::rand_core::OsError,
     },
     ClientAuth {
         source: AuthErr,
@@ -388,11 +385,11 @@ fn add_payload_to_url<T: Serialize>(mut endpoint: Url, payload: T) -> Result<Url
 
 const RANDOM_VALUE_BYTES: usize = 32;
 
-fn generate_random_value() -> Result<String, rand::rand_core::OsError> {
+fn generate_random_value() -> String {
     use base64::Engine;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
     let mut random_bytes = [0u8; RANDOM_VALUE_BYTES];
-    rand::rngs::OsRng.try_fill_bytes(&mut random_bytes)?;
-    Ok(URL_SAFE_NO_PAD.encode(random_bytes))
+    rand::rng().try_fill_bytes(&mut random_bytes);
+    URL_SAFE_NO_PAD.encode(random_bytes)
 }

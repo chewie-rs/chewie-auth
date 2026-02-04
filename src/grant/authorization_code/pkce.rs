@@ -1,6 +1,7 @@
 //! A helper for generating PKCE (Proof Key for Code Exchange) pairs.
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use rand::TryRng;
 use sha2::{Digest, Sha256};
 
 /// The PKCE pair generated using the `S256` method of RFC 7636.
@@ -14,12 +15,9 @@ pub struct Pkce {
 impl Pkce {
     /// Creates a new PKCE verifier and challenger pair using the `S256` method of RFC 7636.
     #[must_use]
-    pub fn generate_s256_pair() -> Result<Self, rand::rand_core::OsError> {
-        use rand::TryRngCore as _;
-        use rand::rand_core::OsRng;
-
+    pub fn generate_s256_pair() -> Self {
         let mut verifier_bytes = [0u8; 32];
-        OsRng.try_fill_bytes(&mut verifier_bytes)?;
+        rand::rng().try_fill_bytes(&mut verifier_bytes);
         let verifier = URL_SAFE_NO_PAD.encode(verifier_bytes);
 
         let mut hasher = Sha256::new();
@@ -28,10 +26,10 @@ impl Pkce {
 
         let challenge = URL_SAFE_NO_PAD.encode(challenge_bytes);
 
-        Ok(Self {
+        Self {
             verifier,
             challenge,
-        })
+        }
     }
 }
 
